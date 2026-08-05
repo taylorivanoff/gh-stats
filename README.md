@@ -1,5 +1,8 @@
 # GhStats - GitHub Stars & Downloads Analytics Desktop App
 
+[![Release](https://img.shields.io/github/v/release/taylorivanoff/gh-stats)](https://github.com/taylorivanoff/gh-stats/releases)
+[![Downloads](https://img.shields.io/github/downloads/taylorivanoff/gh-stats/total)](https://github.com/taylorivanoff/gh-stats/releases)
+[![Stars](https://img.shields.io/github/stars/taylorivanoff/gh-stats)](https://github.com/taylorivanoff/gh-stats/stargazers)
 [![License](https://img.shields.io/github/license/taylorivanoff/gh-stats)](LICENSE)
 
 **GhStats** is an open-source, cross-platform **desktop analytics dashboard** for your public GitHub repositories. Track stars and release download counts over time - totals, daily deltas, and rolling windows stored entirely on your machine.
@@ -11,9 +14,11 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 - KPI strip: total stars / downloads, today, 7d, and 30d windows
 - Time ranges: **7d · 30d · 90d · All**
 - Charts: new stars per day, download deltas, cumulative stars, total downloads
+- Hover tooltips on delta charts showing which repos changed
 - Per-repo table with stars, downloads, and 7d/30d star windows
 - Local snapshots + optional star-history cache (rate-limit aware)
 - Live fetch timer and rolling average timings
+- Toggleable debug log bar
 - Tray icon, splash screen, single-instance, window bounds persistence
 - Close hides to tray (Quit from tray menu)
 
@@ -41,8 +46,10 @@ bun run start
 3. Use the range tabs (**7d / 30d / 90d / All**) to change the chart window
 4. Click **Refresh** to re-pull current stars and release download totals
 5. Click **History** once to backfill star timelines via `gh api stargazers` (slow; rate-limit aware)
+6. Hover delta chart bars to see which repos contributed that day
+7. Click **Debug** to show or hide the log strip
 
-Download charts need **multiple daily snapshots** before deltas appear. Star charts need a **History** fetch.
+Download charts need **multiple daily snapshots** before deltas appear. Star charts need a **History** fetch for day-by-day stargazer detail (snapshot totals still plot without it).
 
 ## Data collection
 
