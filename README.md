@@ -2,9 +2,7 @@
 
 [![License](https://img.shields.io/github/license/taylorivanoff/gh-stats)](LICENSE)
 
-**GhStats** is an open-source, cross-platform **desktop analytics dashboard** for your public GitHub repositories. Track stars and release download counts over time — totals, daily deltas, and rolling windows — stored entirely on your machine.
-
-Built from the [CmdDeck](https://github.com/taylorivanoff/cmd-deck) Electron template. Uses the same `gh` CLI data model as the `ghstats` PowerShell alias.
+**GhStats** is an open-source, cross-platform **desktop analytics dashboard** for your public GitHub repositories. Track stars and release download counts over time - totals, daily deltas, and rolling windows stored entirely on your machine.
 
 Ideal for indie developers who want a lightweight **Google Analytics–style view** of GitHub engagement without shipping data to a third party.
 
@@ -28,7 +26,6 @@ Main analytics dashboard:
 ## Requirements
 
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`)
-- [Bun](https://bun.sh/) or Node.js
 
 ## Development
 
