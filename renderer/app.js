@@ -17,6 +17,7 @@
   let timerInterval = null;
   let timerStartedAt = 0;
   let timerMode = null;
+  let showDebugBar = false;
 
   const els = {
     authBadge: document.getElementById('auth-badge'),
@@ -28,6 +29,7 @@
     progressText: document.getElementById('progress-text'),
     progressElapsed: document.getElementById('progress-elapsed'),
     logPanel: document.getElementById('log-panel'),
+    btnDebug: document.getElementById('btn-debug'),
     btnRefresh: document.getElementById('btn-refresh'),
     btnStarHistory: document.getElementById('btn-star-history'),
     starsDailySub: document.getElementById('stars-daily-sub'),
@@ -115,10 +117,36 @@
     const time = entry.time ? entry.time.slice(11, 19) : '';
     logLines.push({ level: entry.level || 'info', text: `[${time}] ${entry.message}` });
     while (logLines.length > MAX_LOG_LINES) logLines.shift();
+    if (!showDebugBar) return;
     els.logPanel.innerHTML = logLines.map((l) =>
       `<div class="log-line ${l.level}">${escapeHtml(l.text)}</div>`
     ).join('');
     els.logPanel.scrollTop = els.logPanel.scrollHeight;
+  }
+
+  function renderLogPanel() {
+    if (!showDebugBar) return;
+    els.logPanel.innerHTML = logLines.map((l) =>
+      `<div class="log-line ${l.level}">${escapeHtml(l.text)}</div>`
+    ).join('');
+    els.logPanel.scrollTop = els.logPanel.scrollHeight;
+  }
+
+  function applyDebugBar(on) {
+    showDebugBar = !!on;
+    els.logPanel.classList.toggle('hidden', !showDebugBar);
+    els.logPanel.hidden = !showDebugBar;
+    els.btnDebug.classList.toggle('is-on', showDebugBar);
+    els.btnDebug.setAttribute('aria-pressed', showDebugBar ? 'true' : 'false');
+    if (showDebugBar) renderLogPanel();
+  }
+
+  async function toggleDebugBar() {
+    const next = !showDebugBar;
+    applyDebugBar(next);
+    try {
+      await window.ghStats?.setSettings?.({ showDebugBar: next });
+    } catch (_) {}
   }
 
   function escapeHtml(text) {
@@ -197,11 +225,31 @@
     const root = getComputedStyle(document.documentElement);
     const starsColor = root.getPropertyValue('--chart-stars').trim();
     const downloadsColor = root.getPropertyValue('--chart-downloads').trim();
-    els.starsDailySub.textContent = data.meta.hasStarHistory ? 'History' : 'Load history';
-    drawLineChart(els.charts.starsDaily, data.series.starsDaily, { color: starsColor });
-    drawLineChart(els.charts.downloadsDaily, data.series.downloadsDaily, { color: downloadsColor });
-    drawLineChart(els.charts.starsCumulative, data.series.starsCumulative, { color: starsColor });
-    drawLineChart(els.charts.downloadsTotal, data.series.downloadsTotal, { color: downloadsColor });
+    els.starsDailySub.textContent = data.meta.hasStarHistory ? 'From star history' : 'From snapshots';
+    drawLineChart(els.charts.starsDaily, data.series.starsDaily, {
+      color: starsColor,
+      mode: 'bars',
+      emptyText: 'No star deltas yet',
+      valueLabel: 'New stars',
+      tooltips: true
+    });
+    drawLineChart(els.charts.downloadsDaily, data.series.downloadsDaily, {
+      color: downloadsColor,
+      mode: 'bars',
+      emptyText: 'Need more daily snapshots',
+      valueLabel: 'New downloads',
+      tooltips: true
+    });
+    drawLineChart(els.charts.starsCumulative, data.series.starsCumulative, {
+      color: starsColor,
+      emptyText: 'Refresh to load totals',
+      interactive: false
+    });
+    drawLineChart(els.charts.downloadsTotal, data.series.downloadsTotal, {
+      color: downloadsColor,
+      emptyText: 'Refresh to load totals',
+      interactive: false
+    });
   }
 
   function renderMeta(data) {
@@ -275,6 +323,10 @@
       logs.forEach(appendLog);
     } catch (_) {}
   }
+
+  els.btnDebug.addEventListener('click', () => {
+    toggleDebugBar();
+  });
 
   els.rangeTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('.range-tab');
@@ -358,8 +410,14 @@
   (async () => {
     try {
       await window.ghStats.ready();
+      try {
+        const settings = await window.ghStats.getSettings();
+        applyDebugBar(!!settings.showDebugBar);
+      } catch (_) {
+        applyDebugBar(false);
+      }
       await Promise.all([loadTimings(), loadDashboard(), checkAuth()]);
-      loadLogs();
+      loadLogs().then(() => { if (showDebugBar) renderLogPanel(); });
     } catch (err) {
       setAuthBadge('Startup error', 'error');
       appendLog({ level: 'error', message: `boot: ${err.message}`, time: new Date().toISOString() });

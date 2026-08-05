@@ -3,8 +3,10 @@ const {
   BrowserWindow,
   ipcMain,
   screen,
-  nativeTheme
+  nativeTheme,
+  Notification
 } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const store = require('./store');
 const collector = require('./collector');
@@ -13,6 +15,8 @@ const { createTray, updateTrayMenu, destroyTray, getIconPath } = require('./tray
 const logger = require('./logger');
 
 const APP_NAME = 'GhStats';
+const START_MINIMIZED_ARG = '--start-minimised';
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MIN_WIDTH = 720;
 const MIN_HEIGHT = 520;
 const DEFAULT_BOUNDS = { width: 960, height: 680 };
@@ -23,6 +27,8 @@ let isQuitting = false;
 let fetchInProgress = false;
 let rendererReady = false;
 let pendingAutoFetch = false;
+let manualUpdateCheck = false;
+let trayHandlers = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -157,7 +163,10 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     logger.info('Renderer loaded');
     closeSplash();
-    mainWindow.show();
+    const startMinimised = process.argv.includes(START_MINIMIZED_ARG)
+      || store.getSettings().startMinimised;
+    if (startMinimised) mainWindow.hide();
+    else mainWindow.show();
     pendingAutoFetch = store.needsAutoFetch(userDataPath());
     maybeAutoFetch();
   });
@@ -295,31 +304,78 @@ async function runFetch(options = {}) {
 }
 
 function setupTray() {
+  trayHandlers = {
+    showWindow,
+    refresh: () => runFetch({ includeStarHistory: false }),
+    getSettings: store.getSettings,
+    setAlwaysOnTop: (checked) => {
+      store.setSettings({ alwaysOnTop: checked });
+      if (mainWindow) mainWindow.setAlwaysOnTop(checked);
+      updateTrayMenu(trayHandlers);
+    },
+    checkForUpdates: () => checkForUpdates(true),
+    quit: () => {
+      isQuitting = true;
+      app.quit();
+    }
+  };
+
   try {
-    createTray(getIconPath(), {
-      showWindow,
-      refresh: () => runFetch({ includeStarHistory: false }),
-      getSettings: store.getSettings,
-      setAlwaysOnTop: (checked) => {
-        store.setSettings({ alwaysOnTop: checked });
-        if (mainWindow) mainWindow.setAlwaysOnTop(checked);
-        updateTrayMenu({
-          showWindow,
-          refresh: () => runFetch({ includeStarHistory: false }),
-          getSettings: store.getSettings,
-          setAlwaysOnTop: (c) => mainWindow?.setAlwaysOnTop(c),
-          quit: () => { isQuitting = true; app.quit(); }
-        });
-      },
-      quit: () => {
-        isQuitting = true;
-        app.quit();
-      }
-    });
+    createTray(getIconPath(), trayHandlers);
     logger.info('Tray created');
   } catch (err) {
     logger.warn('Tray unavailable', { message: err.message });
   }
+}
+
+async function checkForUpdates(manual = false) {
+  if (!app.isPackaged) {
+    if (manual) logger.info('Update check skipped (unpackaged)');
+    return;
+  }
+  manualUpdateCheck = manual;
+  try {
+    logger.info('Checking for updates', { manual });
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    logger.warn('Update check failed', { message: err.message });
+    manualUpdateCheck = false;
+  }
+}
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    logger.info('Update available', { version: info.version });
+    if (!Notification.isSupported()) return;
+    new Notification({
+      title: APP_NAME,
+      body: `Update ${info.version} found. The app will update and restart.`,
+      icon: getIconPath()
+    }).show();
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    logger.info('No updates available');
+    manualUpdateCheck = false;
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    logger.info('Update downloaded — installing');
+    manualUpdateCheck = false;
+    isQuitting = true;
+    autoUpdater.quitAndInstall(true, true);
+  });
+
+  autoUpdater.on('error', (err) => {
+    logger.warn('Updater error', { message: err?.message || String(err) });
+    manualUpdateCheck = false;
+  });
+
+  checkForUpdates(false);
+  setInterval(() => checkForUpdates(false), UPDATE_CHECK_INTERVAL_MS);
 }
 
 function maybeAutoFetch() {
@@ -373,6 +429,7 @@ app.whenReady().then(() => {
   registerIpc();
   setupTray();
   createWindow();
+  if (app.isPackaged) setupAutoUpdater();
 });
 
 app.on('before-quit', () => {

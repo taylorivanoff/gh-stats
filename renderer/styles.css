@@ -236,6 +236,12 @@ body.platform-darwin .titlebar-drag {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+.text-btn.is-on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .progress-bar {
   flex-shrink: 0;
   display: flex;
@@ -280,6 +286,11 @@ body.platform-darwin .titlebar-drag {
   font-size: 9px;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+.log-panel.hidden,
+.log-panel[hidden] {
+  display: none !important;
 }
 
 .log-panel:empty { display: none; }
@@ -384,6 +395,75 @@ body.platform-darwin .titlebar-drag {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 10000;
+  min-width: 140px;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+.chart-tooltip.hidden { display: none; }
+
+.chart-tooltip .tt-date {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.chart-tooltip .tt-total {
+  margin-bottom: 6px;
+}
+
+.chart-tooltip .tt-total strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip .tt-repos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.chart-tooltip .tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-tooltip .tt-repo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.chart-tooltip .tt-delta {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: var(--success);
+}
+
+.chart-tooltip .tt-more,
+.chart-tooltip .tt-empty {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 .table-section {

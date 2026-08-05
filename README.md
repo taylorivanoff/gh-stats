@@ -32,12 +32,34 @@ Main analytics dashboard:
 
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`)
 
+## Installation
+
+### Windows
+
+1. Download the latest installer from [Releases](https://github.com/taylorivanoff/gh-stats/releases)
+2. Run the installer and follow the prompts
+
+### macOS
+
+1. Download the `.dmg` from [Releases](https://github.com/taylorivanoff/gh-stats/releases) and drag **GhStats** to Applications
+2. macOS may say the app is “damaged” — that is Gatekeeper blocking an unsigned download, not a bad file. Go to System Preferences → Security & Privacy, then “Open anyway”.
+
 ## Development
 
 ```bash
 bun install
 bun run start
 ```
+
+### Building
+
+```bash
+bun run release
+```
+
+### Releasing
+
+Bump the `version` in `package.json` and push to `master` (or run `bun run bump`). The GitHub Actions workflow builds Windows and macOS installers, uploads updater metadata, and creates a GitHub Release.
 
 ## Usage
 

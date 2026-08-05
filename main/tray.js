@@ -1,14 +1,15 @@
-const { Tray, Menu, nativeImage } = require('electron');
+const { Tray, Menu, nativeImage, app } = require('electron');
 const path = require('path');
 
 let tray = null;
+let trayHandlers = null;
 
 function createTray(iconPath, handlers) {
   if (tray) return tray;
+  trayHandlers = handlers;
 
   let image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) {
-    // Windows tray requires a non-empty image; fall back to a 1×1 pixel.
     image = nativeImage.createFromBuffer(
       Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
     );
@@ -28,21 +29,23 @@ function createTray(iconPath, handlers) {
 }
 
 function updateTrayMenu(handlers) {
-  if (!tray || tray.isDestroyed()) return;
-  const { app } = require('electron');
+  const h = handlers || trayHandlers;
+  if (!tray || tray.isDestroyed() || !h) return;
+  trayHandlers = h;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show GhStats', click: () => handlers.showWindow() },
-    { label: 'Refresh data', click: () => handlers.refresh() },
+    { label: 'Show GhStats', click: () => h.showWindow() },
+    { label: 'Refresh data', click: () => h.refresh() },
     { type: 'separator' },
-  {
+    {
       label: 'Always on Top',
       type: 'checkbox',
-      checked: !!handlers.getSettings().alwaysOnTop,
-      click: (item) => handlers.setAlwaysOnTop(item.checked)
+      checked: !!h.getSettings().alwaysOnTop,
+      click: (item) => h.setAlwaysOnTop(item.checked)
     },
     { type: 'separator' },
+    { label: 'Check for Updates', click: () => h.checkForUpdates?.() },
     { label: `Version ${app.getVersion()}`, enabled: false },
-    { label: 'Quit', click: () => handlers.quit() }
+    { label: 'Quit', click: () => h.quit() }
   ]));
 }
 
@@ -51,6 +54,7 @@ function destroyTray() {
     tray.destroy();
     tray = null;
   }
+  trayHandlers = null;
 }
 
 function getIconPath() {

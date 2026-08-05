@@ -11,6 +11,7 @@ const settingsStore = new Store({
     lastFetchAt: null,
     autoFetchHours: 24,
     starHistoryLoaded: false,
+    showDebugBar: false,
     timings: []
   }
 });
@@ -99,7 +100,8 @@ function getSettings() {
     startMinimised: settingsStore.get('startMinimised', false),
     lastFetchAt: settingsStore.get('lastFetchAt', null),
     autoFetchHours: settingsStore.get('autoFetchHours', 24),
-    starHistoryLoaded: settingsStore.get('starHistoryLoaded', false)
+    starHistoryLoaded: settingsStore.get('starHistoryLoaded', false),
+    showDebugBar: settingsStore.get('showDebugBar', false)
   };
 }
 
@@ -111,6 +113,7 @@ function setSettings(partial) {
     if (Number.isFinite(h) && h >= 1) settingsStore.set('autoFetchHours', Math.min(168, h));
   }
   if (partial.starHistoryLoaded !== undefined) settingsStore.set('starHistoryLoaded', !!partial.starHistoryLoaded);
+  if (partial.showDebugBar !== undefined) settingsStore.set('showDebugBar', !!partial.showDebugBar);
   return getSettings();
 }
 

@@ -10,13 +10,56 @@
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "bump": "node scripts/bump-version.js",
+    "release": "electron-builder --publish=never"
+  },
+  "build": {
+    "appId": "io.github.taylorivanoff.gh-stats",
+    "productName": "GhStats",
+    "files": [
+      "main/**/*",
+      "preload/**/*",
+      "renderer/**/*",
+      "resources/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "resources/icon.png",
+      "target": "nsis",
+      "artifactName": "${name}-Setup-${version}.${ext}"
+    },
+    "afterPack": "./scripts/after-pack.js",
+    "mac": {
+      "icon": "resources/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "include": "installer.nsh",
+      "deleteAppDataOnUninstall": true
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://github.com/taylorivanoff/gh-stats/releases/latest/download"
+    }
   },
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "electron-reloader": "^1.2.3"
   }
 }

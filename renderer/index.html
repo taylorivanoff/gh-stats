@@ -23,6 +23,7 @@
           <button type="button" class="range-tab" data-range="all">All</button>
         </div>
         <span class="last-updated" id="last-updated"></span>
+        <button type="button" class="text-btn" id="btn-debug" title="Toggle debug log" aria-pressed="false">Debug</button>
         <button type="button" class="text-btn" id="btn-star-history" title="Fetch star history (slow)">History</button>
         <button type="button" class="text-btn primary" id="btn-refresh">Refresh</button>
       </div>
@@ -33,7 +34,7 @@
       <span class="progress-elapsed" id="progress-elapsed"></span>
     </div>
 
-    <aside class="log-panel" id="log-panel" aria-label="Application log"></aside>
+    <aside class="log-panel hidden" id="log-panel" aria-label="Application log" hidden></aside>
 
     <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
 
