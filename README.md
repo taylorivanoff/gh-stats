@@ -1,4 +1,4 @@
-# GhStats - Local GitHub Stars & Downloads Analytics
+# GhStats - GitHub Stars & Downloads Analytics Des
 
 [![License](https://img.shields.io/github/license/taylorivanoff/gh-stats)](LICENSE)
 
