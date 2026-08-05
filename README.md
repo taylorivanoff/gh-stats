@@ -1,4 +1,4 @@
-# GhStats - GitHub Stars & Downloads Analytics Des
+# GhStats - GitHub Stars & Downloads Analytics Desktop App
 
 [![License](https://img.shields.io/github/license/taylorivanoff/gh-stats)](LICENSE)
 
