@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="GhStats">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c1c1e"/>
+      <stop offset="100%" stop-color="#243b4a"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a4550"/>
+      <stop offset="100%" stop-color="#2c343c"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+  <!-- analytics card -->
+  <rect x="156" y="220" width="712" height="560" rx="72" fill="url(#panel)"/>
+
+  <!-- baseline -->
+  <rect x="220" y="680" width="584" height="12" rx="6" fill="#1c1c1e" opacity="0.35"/>
+
+  <!-- chart bars (growth) -->
+  <rect x="248" y="560" width="72" height="120" rx="18" fill="#8b949e" opacity="0.35"/>
+  <rect x="360" y="480" width="72" height="200" rx="18" fill="#8b949e" opacity="0.5"/>
+  <rect x="472" y="400" width="72" height="280" rx="18" fill="#8b949e" opacity="0.7"/>
+  <rect x="584" y="320" width="72" height="360" rx="18" fill="#4cc2ff" filter="url(#glow)"/>
+  <rect x="696" y="260" width="72" height="420" rx="18" fill="#4cc2ff" opacity="0.55"/>
+
+  <!-- trend sparkline -->
+  <path fill="none" stroke="#f5f5f7" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"
+    d="M284 540 L396 460 L508 380 L620 300 L732 250"/>
+
+  <!-- star badge -->
+  <g transform="translate(700 160)" filter="url(#glow)">
+    <circle cx="96" cy="96" r="96" fill="#4cc2ff"/>
+    <path fill="#00344d" d="M96 42l18 54h56l-46 34 18 56-46-34-46 34 18-56-46-34h56z"/>
+  </g>
+</svg>

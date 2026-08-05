@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GhStats</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <h1 class="app-title">GhStats</h1>
+        <span class="auth-badge pending" id="auth-badge">Starting…</span>
+      </div>
+      <div class="titlebar-actions">
+        <div class="range-tabs" id="range-tabs" role="tablist">
+          <button type="button" class="range-tab" data-range="7">7d</button>
+          <button type="button" class="range-tab active" data-range="30">30d</button>
+          <button type="button" class="range-tab" data-range="90">90d</button>
+          <button type="button" class="range-tab" data-range="all">All</button>
+        </div>
+        <span class="last-updated" id="last-updated"></span>
+        <button type="button" class="text-btn" id="btn-star-history" title="Fetch star history (slow)">History</button>
+        <button type="button" class="text-btn primary" id="btn-refresh">Refresh</button>
+      </div>
+    </header>
+
+    <div class="progress-bar hidden" id="progress-bar">
+      <span class="progress-text" id="progress-text"></span>
+      <span class="progress-elapsed" id="progress-elapsed"></span>
+    </div>
+
+    <aside class="log-panel" id="log-panel" aria-label="Application log"></aside>
+
+    <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
+
+    <section class="charts-grid">
+      <article class="chart-card">
+        <header class="chart-header">
+          <h2>New stars</h2>
+          <span class="chart-sub" id="stars-daily-sub"></span>
+        </header>
+        <div class="chart-body"><canvas id="chart-stars-daily"></canvas></div>
+      </article>
+      <article class="chart-card">
+        <header class="chart-header">
+          <h2>Download deltas</h2>
+          <span class="chart-sub">Snapshots</span>
+        </header>
+        <div class="chart-body"><canvas id="chart-downloads-daily"></canvas></div>
+      </article>
+      <article class="chart-card">
+        <header class="chart-header">
+          <h2>Cumulative stars</h2>
+        </header>
+        <div class="chart-body"><canvas id="chart-stars-cumulative"></canvas></div>
+      </article>
+      <article class="chart-card">
+        <header class="chart-header">
+          <h2>Total downloads</h2>
+        </header>
+        <div class="chart-body"><canvas id="chart-downloads-total"></canvas></div>
+      </article>
+    </section>
+
+    <section class="table-section">
+      <header class="table-header">
+        <h2>Repositories</h2>
+        <span class="table-meta" id="repo-count"></span>
+      </header>
+      <div class="table-wrap">
+        <table class="repo-table" id="repo-table">
+          <thead>
+            <tr>
+              <th>Repository</th>
+              <th class="num">Stars</th>
+              <th class="num">Downloads</th>
+              <th class="num">7d</th>
+              <th class="num">30d</th>
+            </tr>
+          </thead>
+          <tbody id="repo-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "gh-stats",
+  "description": "Local GitHub stars and release download analytics for your public repos.",
+  "author": {
+    "name": "Taylor Ivanoff"
+  },
+  "version": "1.0.0",
+  "repository": "https://github.com/taylorivanoff/gh-stats",
+  "license": "MIT",
+  "main": "main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-reloader": "^1.2.3"
+  }
+}
