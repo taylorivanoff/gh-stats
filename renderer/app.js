@@ -18,11 +18,14 @@
   let timerStartedAt = 0;
   let timerMode = null;
   let showDebugBar = false;
-  let repoListQuery = '';
-  let saveQueryTimer = null;
 
-  const DEFAULT_REPO_LIST_QUERY =
-    'repo list --visibility public --limit 1000 --json nameWithOwner,stargazerCount,updatedAt';
+  const DEFAULT_LAYOUT = { tableH: 140 };
+
+  const SPLITTER_SIZE = 10;
+  const KPI_H = 52;
+
+  let layout = { ...DEFAULT_LAYOUT };
+  let saveLayoutTimer = null;
 
   const els = {
     authBadge: document.getElementById('auth-badge'),
@@ -33,8 +36,6 @@
     progressBar: document.getElementById('progress-bar'),
     progressText: document.getElementById('progress-text'),
     progressElapsed: document.getElementById('progress-elapsed'),
-    queryInput: document.getElementById('query-input'),
-    btnQueryReset: document.getElementById('btn-query-reset'),
     logPanel: document.getElementById('log-panel'),
     btnDebug: document.getElementById('btn-debug'),
     btnRefresh: document.getElementById('btn-refresh'),
@@ -46,7 +47,9 @@
       downloadsDaily: document.getElementById('chart-downloads-daily'),
       starsCumulative: document.getElementById('chart-stars-cumulative'),
       downloadsTotal: document.getElementById('chart-downloads-total')
-    }
+    },
+    mainPanels: document.getElementById('main-panels'),
+    splitTable: document.getElementById('split-table')
   };
 
   const platform = window.navigator.platform || '';
@@ -64,6 +67,72 @@
     repos: [],
     meta: { snapshotCount: 0, hasStarHistory: false, lastSnapshotAt: null }
   };
+
+  function clamp(n, min, max) {
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function applyLayout(next = layout) {
+    layout = { ...DEFAULT_LAYOUT, ...next };
+    document.documentElement.style.setProperty('--table-h', `${layout.tableH}px`);
+  }
+
+  function maxTableHeight() {
+    if (!els.mainPanels) return 480;
+    const reserved = KPI_H + 6 + 120 + SPLITTER_SIZE;
+    return clamp(Math.floor(els.mainPanels.clientHeight - reserved), 72, 480);
+  }
+
+  function schedulePersistLayout() {
+    if (saveLayoutTimer) clearTimeout(saveLayoutTimer);
+    saveLayoutTimer = setTimeout(() => {
+      saveLayoutTimer = null;
+      if (window.ghStats?.setSettings) {
+        window.ghStats.setSettings({ layout }).catch(() => {});
+      }
+    }, 200);
+  }
+
+  function finishResize(handle, pointerId) {
+    handle.classList.remove('is-dragging');
+    document.body.classList.remove('is-resizing');
+    if (pointerId != null) handle.releasePointerCapture(pointerId);
+    schedulePersistLayout();
+  }
+
+  function bindHeightSplitter(handle, { getSize, setSize, invert = false }) {
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.classList.add('is-dragging');
+      document.body.classList.add('is-resizing');
+      const startY = e.clientY;
+      const startSize = getSize();
+      handle.setPointerCapture(e.pointerId);
+
+      function onMove(ev) {
+        const delta = ev.clientY - startY;
+        setSize(startSize + (invert ? -delta : delta));
+      }
+      function onUp(ev) {
+        finishResize(handle, ev.pointerId);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  function initSplitters() {
+    applyLayout();
+    bindHeightSplitter(els.splitTable, {
+      getSize: () => layout.tableH,
+      setSize: (h) => applyLayout({ ...layout, tableH: clamp(Math.round(h), 72, maxTableHeight()) }),
+      invert: true
+    });
+  }
 
   function formatDuration(ms) {
     if (!Number.isFinite(ms)) return '—';
@@ -156,63 +225,19 @@
     } catch (_) {}
   }
 
-  function applyRepoListQuery(query) {
-    repoListQuery = (query || DEFAULT_REPO_LIST_QUERY).trim() || DEFAULT_REPO_LIST_QUERY;
-    if (els.queryInput && document.activeElement !== els.queryInput) {
-      els.queryInput.value = repoListQuery;
-    }
-  }
-
-  async function persistRepoListQuery(value, { silent } = {}) {
-    const next = String(value || '').trim().replace(/^gh\s+/i, '') || DEFAULT_REPO_LIST_QUERY;
-    if (next === repoListQuery) {
-      applyRepoListQuery(next);
-      return repoListQuery;
-    }
-    try {
-      const settings = await window.ghStats.setSettings({ repoListQuery: next });
-      applyRepoListQuery(settings.repoListQuery || next);
-      if (!silent) {
-        appendLog({
-          level: 'info',
-          message: `query saved: gh ${repoListQuery}`,
-          time: new Date().toISOString()
-        });
-      }
-      return repoListQuery;
-    } catch (err) {
-      appendLog({
-        level: 'error',
-        message: `query save failed: ${err.message}`,
-        time: new Date().toISOString()
-      });
-      applyRepoListQuery(repoListQuery);
-      return repoListQuery;
-    }
-  }
-
-  function schedulePersistRepoListQuery() {
-    if (saveQueryTimer) clearTimeout(saveQueryTimer);
-    saveQueryTimer = setTimeout(() => {
-      saveQueryTimer = null;
-      persistRepoListQuery(els.queryInput.value);
-    }, 400);
-  }
-
   function escapeHtml(text) {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function setAuthBadge(text, state) {
     els.authBadge.textContent = text;
+    els.authBadge.title = text;
     els.authBadge.className = `auth-badge ${state || ''}`.trim();
   }
 
   function setFetching(on, message, startedAt) {
     els.btnRefresh.disabled = on;
     els.btnStarHistory.disabled = on;
-    els.btnQueryReset.disabled = on;
-    els.queryInput.disabled = on;
     if (on) startFetchTimer(message, startedAt);
     else {
       stopTimer();
@@ -380,43 +405,6 @@
     toggleDebugBar();
   });
 
-  els.queryInput.addEventListener('input', () => {
-    schedulePersistRepoListQuery();
-  });
-
-  els.queryInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (saveQueryTimer) {
-        clearTimeout(saveQueryTimer);
-        saveQueryTimer = null;
-      }
-      persistRepoListQuery(els.queryInput.value).then(() => {
-        els.btnRefresh.click();
-      });
-    } else if (e.key === 'Escape') {
-      els.queryInput.value = repoListQuery;
-      els.queryInput.blur();
-    }
-  });
-
-  els.queryInput.addEventListener('blur', () => {
-    if (saveQueryTimer) {
-      clearTimeout(saveQueryTimer);
-      saveQueryTimer = null;
-    }
-    persistRepoListQuery(els.queryInput.value, { silent: true });
-  });
-
-  els.btnQueryReset.addEventListener('click', async () => {
-    if (saveQueryTimer) {
-      clearTimeout(saveQueryTimer);
-      saveQueryTimer = null;
-    }
-    els.queryInput.value = DEFAULT_REPO_LIST_QUERY;
-    await persistRepoListQuery(DEFAULT_REPO_LIST_QUERY);
-  });
-
   els.rangeTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('.range-tab');
     if (!btn) return;
@@ -489,6 +477,7 @@
 
   // Show empty UI immediately, then connect to main process.
   renderDashboard(EMPTY_DASHBOARD);
+  initSplitters();
 
   if (!window.ghStats) {
     setAuthBadge('No bridge', 'error');
@@ -502,10 +491,9 @@
       try {
         const settings = await window.ghStats.getSettings();
         applyDebugBar(!!settings.showDebugBar);
-        applyRepoListQuery(settings.repoListQuery || DEFAULT_REPO_LIST_QUERY);
+        if (settings.layout) applyLayout(settings.layout);
       } catch (_) {
         applyDebugBar(false);
-        applyRepoListQuery(DEFAULT_REPO_LIST_QUERY);
       }
       await Promise.all([loadTimings(), loadDashboard(), checkAuth()]);
       loadLogs().then(() => { if (showDebugBar) renderLogPanel(); });

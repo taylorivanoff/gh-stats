@@ -34,53 +34,44 @@
       <span class="progress-elapsed" id="progress-elapsed"></span>
     </div>
 
-    <div class="query-bar" id="query-bar" title="gh command used to list repositories">
-      <span class="query-prefix">gh</span>
-      <input
-        type="text"
-        class="query-input"
-        id="query-input"
-        spellcheck="false"
-        autocomplete="off"
-        aria-label="gh repo list query"
-      />
-      <button type="button" class="text-btn" id="btn-query-reset" title="Reset to default query">Reset</button>
-    </div>
-
     <aside class="log-panel hidden" id="log-panel" aria-label="Application log" hidden></aside>
 
-    <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
+    <div class="main-panels" id="main-panels">
+      <div class="dashboard-main">
+        <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
+        <section class="charts-grid" id="charts-grid">
+        <article class="chart-card">
+          <header class="chart-header">
+            <h2>New stars</h2>
+            <span class="chart-sub" id="stars-daily-sub"></span>
+          </header>
+          <div class="chart-body"><canvas id="chart-stars-daily"></canvas></div>
+        </article>
+        <article class="chart-card">
+          <header class="chart-header">
+            <h2>Download deltas</h2>
+            <span class="chart-sub">Snapshots</span>
+          </header>
+          <div class="chart-body"><canvas id="chart-downloads-daily"></canvas></div>
+        </article>
+        <article class="chart-card">
+          <header class="chart-header">
+            <h2>Cumulative stars</h2>
+          </header>
+          <div class="chart-body"><canvas id="chart-stars-cumulative"></canvas></div>
+        </article>
+        <article class="chart-card">
+          <header class="chart-header">
+            <h2>Total downloads</h2>
+          </header>
+          <div class="chart-body"><canvas id="chart-downloads-total"></canvas></div>
+        </article>
+        </section>
+      </div>
 
-    <section class="charts-grid">
-      <article class="chart-card">
-        <header class="chart-header">
-          <h2>New stars</h2>
-          <span class="chart-sub" id="stars-daily-sub"></span>
-        </header>
-        <div class="chart-body"><canvas id="chart-stars-daily"></canvas></div>
-      </article>
-      <article class="chart-card">
-        <header class="chart-header">
-          <h2>Download deltas</h2>
-          <span class="chart-sub">Snapshots</span>
-        </header>
-        <div class="chart-body"><canvas id="chart-downloads-daily"></canvas></div>
-      </article>
-      <article class="chart-card">
-        <header class="chart-header">
-          <h2>Cumulative stars</h2>
-        </header>
-        <div class="chart-body"><canvas id="chart-stars-cumulative"></canvas></div>
-      </article>
-      <article class="chart-card">
-        <header class="chart-header">
-          <h2>Total downloads</h2>
-        </header>
-        <div class="chart-body"><canvas id="chart-downloads-total"></canvas></div>
-      </article>
-    </section>
+      <div class="splitter splitter-h" id="split-table" role="separator" aria-orientation="horizontal" aria-label="Resize repository table"></div>
 
-    <section class="table-section">
+      <section class="table-section">
       <header class="table-header">
         <h2>Repositories</h2>
         <span class="table-meta" id="repo-count"></span>
@@ -99,7 +90,8 @@
           <tbody id="repo-tbody"></tbody>
         </table>
       </div>
-    </section>
+      </section>
+    </div>
   </div>
 
   <script src="charts.js"></script>

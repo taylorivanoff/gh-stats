@@ -1,6 +1,13 @@
 const { app, ipcMain } = require('electron');
 const path = require('path');
-const { run } = require('electron-tray-base');
+const loadElectronTrayBase = require('./load-electron-tray-base');
+const { configureAppIsolation, run } = loadElectronTrayBase();
+
+configureAppIsolation({
+  appId: 'io.github.taylorivanoff.gh-stats',
+  appName: 'GhStats'
+});
+
 const store = require('./store');
 const collector = require('./collector');
 const { buildDashboard } = require('./analytics');
@@ -61,11 +68,10 @@ async function runFetch(sendToRenderer, options = {}) {
       return { ok: false, error: 'gh not authenticated. Run: gh auth login', ms: Date.now() - fetchStarted };
     }
 
-    const repoListQuery = store.getSettings().repoListQuery;
+    const repoListQuery = store.DEFAULT_REPO_LIST_QUERY;
     broadcast(sendToRenderer, 'fetch:progress', {
       phase: 'repos',
       message: `Listing repos for ${auth.user}…`,
-      query: repoListQuery,
       startedAt: fetchStarted
     });
 
@@ -135,7 +141,7 @@ function maybeAutoFetch(sendToRenderer) {
   if (!rendererReady || !pendingAutoFetch || fetchInProgress) return;
   pendingAutoFetch = false;
   logger.info('Auto-fetch starting');
-  runFetchRef(sendToRenderer, { includeStarHistory: false }).catch((err) => {
+  runFetch(sendToRenderer, { includeStarHistory: false }).catch((err) => {
     logger.error('Auto-fetch failed', { message: err.message });
   });
 }
@@ -153,6 +159,7 @@ run({
     minHeight: 520,
     defaultBounds: { width: 960, height: 680 }
   },
+  dev: { entryModule: module },
   updater: { enabled: app.isPackaged },
   tray: {
     extraSections: () => [[

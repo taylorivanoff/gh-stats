@@ -5,6 +5,10 @@ const Store = require('electron-store');
 const DEFAULT_REPO_LIST_QUERY =
   'repo list --visibility public --limit 1000 --json nameWithOwner,stargazerCount,updatedAt';
 
+const DEFAULT_LAYOUT = {
+  tableH: 140
+};
+
 const settingsStore = new Store({
   name: 'gh-stats-settings',
   defaults: {
@@ -15,8 +19,8 @@ const settingsStore = new Store({
     autoFetchHours: 24,
     starHistoryLoaded: false,
     showDebugBar: false,
-    repoListQuery: DEFAULT_REPO_LIST_QUERY,
-    timings: []
+    timings: [],
+    layout: { ...DEFAULT_LAYOUT }
   }
 });
 
@@ -98,9 +102,12 @@ function saveSnapshot(userDataPath, data) {
   return snapshot;
 }
 
-function normalizeRepoListQuery(value) {
-  const trimmed = String(value ?? '').trim().replace(/^gh\s+/i, '');
-  return trimmed || DEFAULT_REPO_LIST_QUERY;
+function normalizeLayout(value) {
+  const src = value && typeof value === 'object' ? value : {};
+  const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+  return {
+    tableH: clamp(Math.round(Number(src.tableH) || DEFAULT_LAYOUT.tableH), 72, 480)
+  };
 }
 
 function getSettings() {
@@ -111,7 +118,7 @@ function getSettings() {
     autoFetchHours: settingsStore.get('autoFetchHours', 24),
     starHistoryLoaded: settingsStore.get('starHistoryLoaded', false),
     showDebugBar: settingsStore.get('showDebugBar', false),
-    repoListQuery: normalizeRepoListQuery(settingsStore.get('repoListQuery', DEFAULT_REPO_LIST_QUERY))
+    layout: normalizeLayout(settingsStore.get('layout', DEFAULT_LAYOUT))
   };
 }
 
@@ -124,8 +131,8 @@ function setSettings(partial) {
   }
   if (partial.starHistoryLoaded !== undefined) settingsStore.set('starHistoryLoaded', !!partial.starHistoryLoaded);
   if (partial.showDebugBar !== undefined) settingsStore.set('showDebugBar', !!partial.showDebugBar);
-  if (partial.repoListQuery !== undefined) {
-    settingsStore.set('repoListQuery', normalizeRepoListQuery(partial.repoListQuery));
+  if (partial.layout !== undefined) {
+    settingsStore.set('layout', normalizeLayout({ ...getSettings().layout, ...partial.layout }));
   }
   return getSettings();
 }
@@ -138,7 +145,7 @@ function setWindowBounds(bounds) {
   settingsStore.set('windowBounds', bounds);
 }
 
-function needsAutoFetch(userDataPath) {
+function needsAutoFetch(_userDataPath) {
   const settings = getSettings();
   const last = settings.lastFetchAt;
   if (!last) return true;
@@ -148,6 +155,7 @@ function needsAutoFetch(userDataPath) {
 
 module.exports = {
   DEFAULT_REPO_LIST_QUERY,
+  DEFAULT_LAYOUT,
   loadAllSnapshots,
   saveSnapshot,
   getSettings,
