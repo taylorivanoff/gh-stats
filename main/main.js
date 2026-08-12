@@ -17,6 +17,16 @@ const logger = require('./logger');
 const APP_NAME = 'GhStats';
 const START_MINIMIZED_ARG = '--start-minimised';
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function hasStartMinimisedArg(argv = process.argv) {
+  return argv.some(
+    (arg) => arg === START_MINIMIZED_ARG || arg.startsWith(`${START_MINIMIZED_ARG}=`)
+  );
+}
+
+function wasLaunchedMinimised(argv = process.argv) {
+  return hasStartMinimisedArg(argv);
+}
 const MIN_WIDTH = 720;
 const MIN_HEIGHT = 520;
 const DEFAULT_BOUNDS = { width: 960, height: 680 };
@@ -34,7 +44,10 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showWindow());
+  app.on('second-instance', (_event, argv) => {
+    if (hasStartMinimisedArg(argv)) return;
+    showWindow();
+  });
 
   if (!app.isPackaged) {
     try {
@@ -163,9 +176,7 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     logger.info('Renderer loaded');
     closeSplash();
-    const startMinimised = process.argv.includes(START_MINIMIZED_ARG)
-      || store.getSettings().startMinimised;
-    if (startMinimised) mainWindow.hide();
+    if (wasLaunchedMinimised()) mainWindow.hide();
     else mainWindow.show();
     pendingAutoFetch = store.needsAutoFetch(userDataPath());
     maybeAutoFetch();
@@ -411,6 +422,10 @@ function registerIpc() {
     if (partial.alwaysOnTop !== undefined && mainWindow) {
       mainWindow.setAlwaysOnTop(s.alwaysOnTop);
     }
+    if (partial.startMinimised === false && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
     return s;
   });
   ipcMain.handle('fetch:run', (_e, options) => runFetch(options || {}));
@@ -425,7 +440,7 @@ app.whenReady().then(() => {
   logger.setLogFile(path.join(app.getPath('userData'), 'logs', 'gh-stats.log'));
   logger.info('GhStats starting', { version: app.getVersion(), packaged: app.isPackaged });
   logger.onLog((entry) => broadcast('log:entry', entry));
-  createSplash();
+  if (!wasLaunchedMinimised()) createSplash();
   registerIpc();
   setupTray();
   createWindow();
