@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const Store = require('electron-store');
 
+const DEFAULT_REPO_LIST_QUERY =
+  'repo list --visibility public --limit 1000 --json nameWithOwner,stargazerCount,updatedAt';
+
 const settingsStore = new Store({
   name: 'gh-stats-settings',
   defaults: {
@@ -12,6 +15,7 @@ const settingsStore = new Store({
     autoFetchHours: 24,
     starHistoryLoaded: false,
     showDebugBar: false,
+    repoListQuery: DEFAULT_REPO_LIST_QUERY,
     timings: []
   }
 });
@@ -94,6 +98,11 @@ function saveSnapshot(userDataPath, data) {
   return snapshot;
 }
 
+function normalizeRepoListQuery(value) {
+  const trimmed = String(value ?? '').trim().replace(/^gh\s+/i, '');
+  return trimmed || DEFAULT_REPO_LIST_QUERY;
+}
+
 function getSettings() {
   return {
     alwaysOnTop: settingsStore.get('alwaysOnTop', false),
@@ -101,7 +110,8 @@ function getSettings() {
     lastFetchAt: settingsStore.get('lastFetchAt', null),
     autoFetchHours: settingsStore.get('autoFetchHours', 24),
     starHistoryLoaded: settingsStore.get('starHistoryLoaded', false),
-    showDebugBar: settingsStore.get('showDebugBar', false)
+    showDebugBar: settingsStore.get('showDebugBar', false),
+    repoListQuery: normalizeRepoListQuery(settingsStore.get('repoListQuery', DEFAULT_REPO_LIST_QUERY))
   };
 }
 
@@ -114,6 +124,9 @@ function setSettings(partial) {
   }
   if (partial.starHistoryLoaded !== undefined) settingsStore.set('starHistoryLoaded', !!partial.starHistoryLoaded);
   if (partial.showDebugBar !== undefined) settingsStore.set('showDebugBar', !!partial.showDebugBar);
+  if (partial.repoListQuery !== undefined) {
+    settingsStore.set('repoListQuery', normalizeRepoListQuery(partial.repoListQuery));
+  }
   return getSettings();
 }
 
@@ -134,6 +147,7 @@ function needsAutoFetch(userDataPath) {
 }
 
 module.exports = {
+  DEFAULT_REPO_LIST_QUERY,
   loadAllSnapshots,
   saveSnapshot,
   getSettings,

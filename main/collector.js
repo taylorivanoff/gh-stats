@@ -129,14 +129,54 @@ async function checkAuth() {
   }
 }
 
-async function listPublicRepos() {
-  logger.info('listPublicRepos start');
-  const stdout = await runGh([
-    'repo', 'list', '--visibility', 'public', '--limit', '1000',
-    '--json', 'nameWithOwner,stargazerCount,updatedAt'
-  ]);
+const REQUIRED_REPO_JSON_FIELDS = ['nameWithOwner', 'stargazerCount'];
+const DEFAULT_REPO_LIST_QUERY =
+  'repo list --visibility public --limit 1000 --json nameWithOwner,stargazerCount,updatedAt';
+
+function splitCommandArgs(input) {
+  const args = [];
+  const re = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\S+)/g;
+  let match;
+  while ((match = re.exec(String(input || ''))) !== null) {
+    if (match[1] != null) args.push(match[1].replace(/\\(.)/g, '$1'));
+    else if (match[2] != null) args.push(match[2].replace(/\\(.)/g, '$1'));
+    else args.push(match[3]);
+  }
+  return args;
+}
+
+function ensureRepoListArgs(query) {
+  let args = splitCommandArgs(String(query || '').trim().replace(/^gh\s+/i, ''));
+  if (!args.length) args = splitCommandArgs(DEFAULT_REPO_LIST_QUERY);
+
+  if (args[0] !== 'repo') args = ['repo', ...args];
+  if (args[1] !== 'list') args = [args[0], 'list', ...args.slice(1)];
+
+  let jsonIdx = args.indexOf('--json');
+  const fields = new Set(REQUIRED_REPO_JSON_FIELDS);
+  if (jsonIdx >= 0 && args[jsonIdx + 1] && !String(args[jsonIdx + 1]).startsWith('-')) {
+    for (const f of String(args[jsonIdx + 1]).split(',')) {
+      const name = f.trim();
+      if (name) fields.add(name);
+    }
+    args[jsonIdx + 1] = [...fields].join(',');
+  } else {
+    if (jsonIdx >= 0) args.splice(jsonIdx, 1);
+    args.push('--json', [...fields].join(','));
+  }
+
+  return args;
+}
+
+async function listRepos(query = DEFAULT_REPO_LIST_QUERY) {
+  const args = ensureRepoListArgs(query);
+  logger.info('listRepos start', { query: args.join(' ') });
+  const stdout = await runGh(args);
   const repos = JSON.parse(stdout);
-  logger.info('listPublicRepos ok', { count: repos.length });
+  if (!Array.isArray(repos)) {
+    throw new Error('gh repo list did not return a JSON array — check --json fields');
+  }
+  logger.info('listRepos ok', { count: repos.length });
   return repos;
 }
 
@@ -158,8 +198,8 @@ async function getReleaseDownloadTotal(repo) {
   }
 }
 
-async function fetchCurrentTotals(onProgress) {
-  const repos = await listPublicRepos();
+async function fetchCurrentTotals(onProgress, options = {}) {
+  const repos = await listRepos(options.repoListQuery || DEFAULT_REPO_LIST_QUERY);
   const results = [];
   let stars = 0;
   let downloads = 0;
@@ -266,7 +306,10 @@ function loadAllStarHistories(userDataPath, repos) {
 }
 
 module.exports = {
+  DEFAULT_REPO_LIST_QUERY,
+  ensureRepoListArgs,
   checkAuth,
+  listRepos,
   fetchCurrentTotals,
   fetchStarHistory,
   loadStarHistory,

@@ -274,6 +274,50 @@ body.platform-darwin .titlebar-drag {
 
 .progress-bar.hidden { display: none; }
 
+.query-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.query-prefix {
+  flex-shrink: 0;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  user-select: none;
+}
+
+.query-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: 10px;
+  line-height: 22px;
+  -webkit-app-region: no-drag;
+  user-select: text;
+}
+
+.query-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.query-bar .text-btn {
+  flex-shrink: 0;
+}
+
 .log-panel {
   flex-shrink: 0;
   max-height: 72px;

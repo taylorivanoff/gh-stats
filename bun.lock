@@ -6,6 +6,7 @@
       "name": "gh-stats",
       "dependencies": {
         "electron-store": "^8.2.0",
+        "electron-tray-base": "file:../electron-tray-base",
         "electron-updater": "^6.8.9",
       },
       "devDependencies": {
@@ -213,6 +214,8 @@
     "electron-reloader": ["electron-reloader@1.2.3", "", { "dependencies": { "chalk": "^4.1.0", "chokidar": "^3.5.0", "date-time": "^3.1.0", "electron-is-dev": "^1.2.0", "find-up": "^5.0.0" } }, "sha512-aDnACAzNg0QvQhzw7LYOx/nVS10mEtbuG6M0QQvNQcLnJEwFs6is+EGRCnM+KQlQ4KcTbdwnt07nd7ZjHpY4iw=="],
 
     "electron-store": ["electron-store@8.2.0", "", { "dependencies": { "conf": "^10.2.0", "type-fest": "^2.17.0" } }, "sha512-ukLL5Bevdil6oieAOXz3CMy+OgaItMiVBg701MNlG6W5RaC0AHN7rvlqTCmeb6O7jP0Qa1KKYTE0xV0xbhF4Hw=="],
+
+    "electron-tray-base": ["electron-tray-base@file:../electron-tray-base", { "dependencies": { "electron-store": "^8.2.0", "electron-updater": "^6.8.9" }, "peerDependencies": { "electron": ">=28" } }],
 
     "electron-updater": ["electron-updater@6.8.9", "", { "dependencies": { "builder-util-runtime": "9.7.0", "fs-extra": "^10.1.0", "js-yaml": "^4.1.0", "lazy-val": "^1.0.5", "lodash.escaperegexp": "^4.1.2", "lodash.isequal": "^4.5.0", "semver": "~7.7.3", "tiny-typed-emitter": "^2.1.0" } }, "sha512-ZhVxM9iGONUpZGI1FxdMRgJjUFXi7AYGVa5PwKlO1tV1/4zDxQmfKpXOHVztKrd6L9rLcFjERvi1Mf2vxyTkig=="],
 

@@ -19,6 +19,7 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 - Local snapshots + optional star-history cache (rate-limit aware)
 - Live fetch timer and rolling average timings
 - Toggleable debug log bar
+- Editable `gh repo list` query (org owner, visibility, limit, …)
 - Tray icon, splash screen, single-instance, window bounds persistence
 - Close hides to tray (Quit from tray menu)
 
@@ -70,6 +71,7 @@ Bump the `version` in `package.json` and push to `master` (or run `bun run bump`
 5. Click **History** once to backfill star timelines via `gh api stargazers` (slow; rate-limit aware)
 6. Hover delta chart bars to see which repos contributed that day
 7. Click **Debug** to show or hide the log strip
+8. Edit the **gh** query bar to change which repos are listed (e.g. `repo list my-org --limit 200 --json nameWithOwner,stargazerCount`), then press Enter to save and refresh. **Reset** restores the default public-repo query.
 
 Download charts need **multiple daily snapshots** before deltas appear. Star charts need a **History** fetch for day-by-day stargazer detail (snapshot totals still plot without it).
 
@@ -77,7 +79,7 @@ Download charts need **multiple daily snapshots** before deltas appear. Star cha
 
 | Metric | Source | Notes |
 | --- | --- | --- |
-| Current stars | `gh repo list --json stargazerCount` | One API call |
+| Current stars | Configurable `gh repo list … --json stargazerCount` | Default: public repos, limit 1000 |
 | Current downloads | `gh api repos/{repo}/releases` per repo | Summed asset `download_count` (same as `ghstats`) |
 | Star history | `gh api stargazers` with star timestamps | On-demand; paginated with delays |
 | Download trends | Local daily snapshots | Auto-refresh every 24h; deltas computed locally |
