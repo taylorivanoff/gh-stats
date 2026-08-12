@@ -11,8 +11,8 @@ use std::sync::Arc;
 use serde_json::json;
 use tauri::{Listener, Manager};
 use tauri_tray_base::{
-    apply_window_settings, install_state, setup_tray, sync_autostart, was_launched_minimised,
-    TrayBaseOptions, TrayExtraItem, TraySetupOptions,
+    apply_window_settings, install_state, setup_tray, sync_autostart, TrayBaseOptions,
+    TrayExtraItem, TraySetupOptions,
 };
 
 pub struct AppRuntime {
@@ -96,10 +96,6 @@ pub fn run() {
                     });
                 }
             });
-
-            if was_launched_minimised() {
-                tauri_tray_base::hide_main(app.handle());
-            }
 
             // Seed pending auto-fetch from settings.
             if let Some(state) = app.try_state::<tauri_tray_base::TrayBaseState>() {

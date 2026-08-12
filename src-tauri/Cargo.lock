@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "gh-stats"
-version = "1.0.3"
+version = "1.0.5"
 dependencies = [
  "chrono",
  "parking_lot",
