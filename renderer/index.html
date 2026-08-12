@@ -13,7 +13,10 @@
     <header class="titlebar">
       <div class="titlebar-drag">
         <h1 class="app-title">GhStats</h1>
-        <span class="auth-badge pending" id="auth-badge">Starting…</span>
+        <span class="auth-badge pending" id="gh-badge">gh…</span>
+        <span class="auth-badge pending" id="auth-badge">Auth…</span>
+        <button type="button" class="text-btn primary hidden" id="btn-install-gh" title="Install GitHub CLI via winget">Install gh</button>
+        <button type="button" class="text-btn primary hidden" id="btn-auth-login" title="Sign in with GitHub CLI">Sign in</button>
       </div>
       <div class="titlebar-actions">
         <div class="range-tabs" id="range-tabs" role="tablist">
@@ -94,6 +97,8 @@
     </div>
   </div>
 
+  <script src="vendor/tauri-tray-bridge.js"></script>
+  <script src="preload-bridge.js"></script>
   <script src="charts.js"></script>
   <script src="app.js"></script>
 </body>

@@ -1,8 +1,16 @@
 (function boot() {
   const charts = window.GhCharts;
   if (!charts) {
-    document.getElementById('auth-badge').textContent = 'JS load error';
-    document.getElementById('auth-badge').className = 'auth-badge error';
+    const auth = document.getElementById('auth-badge');
+    const gh = document.getElementById('gh-badge');
+    if (auth) {
+      auth.textContent = 'JS load error';
+      auth.className = 'auth-badge error';
+    }
+    if (gh) {
+      gh.textContent = 'gh ?';
+      gh.className = 'auth-badge error';
+    }
     return;
   }
 
@@ -28,7 +36,10 @@
   let saveLayoutTimer = null;
 
   const els = {
+    ghBadge: document.getElementById('gh-badge'),
     authBadge: document.getElementById('auth-badge'),
+    btnInstallGh: document.getElementById('btn-install-gh'),
+    btnAuthLogin: document.getElementById('btn-auth-login'),
     lastUpdated: document.getElementById('last-updated'),
     kpiGrid: document.getElementById('kpi-grid'),
     repoTbody: document.getElementById('repo-tbody'),
@@ -51,6 +62,9 @@
     mainPanels: document.getElementById('main-panels'),
     splitTable: document.getElementById('split-table')
   };
+
+  let ghBusy = false;
+  let lastGhStatus = null;
 
   const platform = window.navigator.platform || '';
   if (platform.includes('Mac')) document.body.classList.add('platform-darwin');
@@ -161,9 +175,9 @@
     stopTimer();
     timerStartedAt = Date.now();
     timerMode = 'auth';
-    setAuthBadge('Checking gh 0.0s', 'pending');
+    setAuthBadge(`Checking ${elapsedLabel()}`, 'pending');
     timerInterval = setInterval(() => {
-      if (timerMode === 'auth') setAuthBadge(`Checking gh ${elapsedLabel()}`, 'pending');
+      if (timerMode === 'auth') setAuthBadge(`Checking ${elapsedLabel()}`, 'pending');
     }, 100);
   }
 
@@ -229,10 +243,69 @@
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function setBadge(el, text, state) {
+    if (!el) return;
+    el.textContent = text;
+    el.title = text;
+    el.className = `auth-badge ${state || ''}`.trim();
+  }
+
   function setAuthBadge(text, state) {
-    els.authBadge.textContent = text;
-    els.authBadge.title = text;
-    els.authBadge.className = `auth-badge ${state || ''}`.trim();
+    setBadge(els.authBadge, text, state);
+  }
+
+  function setGhBadge(text, state) {
+    setBadge(els.ghBadge, text, state);
+  }
+
+  function updateSetupActions(status) {
+    lastGhStatus = status;
+    const installed = !!status?.installed;
+    const authed = !!status?.authenticated || !!status?.ok;
+    if (els.btnInstallGh) {
+      els.btnInstallGh.classList.toggle('hidden', installed || ghBusy);
+      els.btnInstallGh.disabled = ghBusy;
+    }
+    if (els.btnAuthLogin) {
+      els.btnAuthLogin.classList.toggle('hidden', !installed || authed || ghBusy);
+      els.btnAuthLogin.disabled = ghBusy || !installed;
+    }
+  }
+
+  function applyGhStatus(status, authMs) {
+    if (!status) return;
+    if (status.installed) {
+      const ver = status.version ? ` ${status.version}` : '';
+      setGhBadge(`gh${ver}`, 'ok');
+      if (els.ghBadge && status.path) els.ghBadge.title = status.path;
+    } else {
+      setGhBadge('gh missing', 'pending');
+      if (els.ghBadge) els.ghBadge.title = status.message || 'GitHub CLI not installed';
+    }
+
+    if (!status.installed) {
+      setAuthBadge('Install gh', 'error');
+    } else if (status.authenticated || status.ok) {
+      let suffix = '';
+      const user = status.user || 'authed';
+      if (authMs != null && timingStats?.authAvgMs != null) {
+        suffix = ` (${formatDuration(authMs)}, avg ${formatDuration(timingStats.authAvgMs)})`;
+      } else if (authMs != null) {
+        suffix = ` (${formatDuration(authMs)})`;
+      }
+      setAuthBadge(`${user}${suffix}`, 'ok');
+    } else {
+      setAuthBadge('Not authed', 'error');
+      if (els.authBadge) els.authBadge.title = status.message || status.error || 'Run gh auth login';
+    }
+    updateSetupActions({
+      installed: status.installed,
+      authenticated: status.authenticated || status.ok,
+      version: status.version,
+      path: status.path,
+      message: status.message || status.error,
+      user: status.user
+    });
   }
 
   function setFetching(on, message, startedAt) {
@@ -363,6 +436,7 @@
 
   async function checkAuth() {
     if (!window.ghStats) {
+      setGhBadge('gh ?', 'error');
       setAuthBadge('No bridge', 'error');
       return;
     }
@@ -371,17 +445,12 @@
       const auth = await window.ghStats.checkAuth();
       stopTimer();
       if (auth.timing) timingStats = auth.timing;
+      applyGhStatus(auth, auth.ms);
       if (auth.ok) {
-        let suffix = '';
-        if (auth.ms != null && timingStats?.authAvgMs != null) {
-          suffix = ` (${formatDuration(auth.ms)}, avg ${formatDuration(timingStats.authAvgMs)})`;
-        } else if (auth.ms != null) {
-          suffix = ` (${formatDuration(auth.ms)})`;
-        }
-        setAuthBadge(`${auth.user}${suffix}`, 'ok');
         appendLog({ level: 'info', message: `gh ok: ${auth.user} in ${formatDuration(auth.ms)}`, time: new Date().toISOString() });
+      } else if (auth.installed === false) {
+        appendLog({ level: 'error', message: auth.error || 'gh not installed', time: new Date().toISOString() });
       } else {
-        setAuthBadge('Not authed', 'error');
         appendLog({ level: 'error', message: auth.error || 'gh auth failed', time: new Date().toISOString() });
       }
       if (lastDashboard) renderMeta(lastDashboard);
@@ -389,6 +458,55 @@
       stopTimer();
       setAuthBadge('Auth timeout', 'error');
       appendLog({ level: 'error', message: `auth: ${err.message}`, time: new Date().toISOString() });
+    }
+  }
+
+  async function installGh() {
+    if (!window.ghStats?.installGh || ghBusy) return;
+    ghBusy = true;
+    updateSetupActions(lastGhStatus || { installed: false });
+    setGhBadge('Installing…', 'pending');
+    appendLog({ level: 'info', message: 'Installing GitHub CLI…', time: new Date().toISOString() });
+    try {
+      const result = await window.ghStats.installGh();
+      if (result.status) applyGhStatus(result.status);
+      if (result.ok) {
+        appendLog({ level: 'info', message: result.message || 'gh installed', time: new Date().toISOString() });
+        await checkAuth();
+      } else {
+        setGhBadge('gh missing', 'error');
+        appendLog({ level: 'error', message: result.error || 'Install failed', time: new Date().toISOString() });
+      }
+    } catch (err) {
+      setGhBadge('Install failed', 'error');
+      appendLog({ level: 'error', message: `install: ${err.message}`, time: new Date().toISOString() });
+    } finally {
+      ghBusy = false;
+      updateSetupActions(lastGhStatus || { installed: false });
+    }
+  }
+
+  async function authLogin() {
+    if (!window.ghStats?.authLogin || ghBusy) return;
+    ghBusy = true;
+    updateSetupActions(lastGhStatus || { installed: true, authenticated: false });
+    setAuthBadge('Sign in…', 'pending');
+    appendLog({ level: 'info', message: 'Starting gh auth login…', time: new Date().toISOString() });
+    try {
+      const result = await window.ghStats.authLogin();
+      if (result.ok) {
+        appendLog({ level: 'info', message: result.message || 'auth login started', time: new Date().toISOString() });
+        setAuthBadge('Complete in console', 'pending');
+      } else {
+        setAuthBadge('Sign in failed', 'error');
+        appendLog({ level: 'error', message: result.error || 'auth login failed', time: new Date().toISOString() });
+      }
+    } catch (err) {
+      setAuthBadge('Sign in failed', 'error');
+      appendLog({ level: 'error', message: `auth login: ${err.message}`, time: new Date().toISOString() });
+    } finally {
+      ghBusy = false;
+      updateSetupActions(lastGhStatus || { installed: true, authenticated: false });
     }
   }
 
@@ -405,6 +523,25 @@
     toggleDebugBar();
   });
 
+  els.btnInstallGh?.addEventListener('click', () => {
+    installGh();
+  });
+
+  els.btnAuthLogin?.addEventListener('click', async () => {
+    await authLogin();
+  });
+
+  // Re-check after user may have finished console auth (when window gains focus).
+  let focusRecheckTimer = null;
+  window.addEventListener('focus', () => {
+    if (lastGhStatus?.authenticated || lastGhStatus?.ok) return;
+    if (!lastGhStatus?.installed) return;
+    if (focusRecheckTimer) clearTimeout(focusRecheckTimer);
+    focusRecheckTimer = setTimeout(() => {
+      checkAuth();
+    }, 800);
+  });
+
   els.rangeTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('.range-tab');
     if (!btn) return;
@@ -414,57 +551,56 @@
     loadDashboard();
   });
 
-  els.btnRefresh.addEventListener('click', async () => {
-    setFetching(true, 'Fetching stars and downloads…');
+  function showFetchError(message) {
+    stopTimer();
+    timerMode = null;
+    els.btnRefresh.disabled = false;
+    els.btnStarHistory.disabled = false;
+    els.progressBar.classList.remove('hidden');
+    els.progressText.textContent = message || 'Fetch failed';
+    els.progressElapsed.textContent = '';
+  }
+
+  async function startFetch(includeStarHistory, pendingMessage) {
+    setFetching(true, pendingMessage);
     try {
-      const result = await window.ghStats.runFetch({ includeStarHistory: false });
-      if (result.timing) timingStats = result.timing;
-      if (!result.ok) {
-        els.progressText.textContent = result.error || 'Fetch failed';
-        els.progressElapsed.textContent = formatDuration(result.ms);
-        stopTimer();
-      } else {
-        setFetching(false);
+      const result = await window.ghStats.runFetch({ includeStarHistory });
+      if (!result?.ok || result.started === false) {
+        showFetchError(result?.error || 'Fetch failed');
       }
-      await loadDashboard();
+      // Success path is event-driven: fetch:progress / fetch:done
     } catch (err) {
-      els.progressText.textContent = err.message;
+      showFetchError(err.message);
       appendLog({ level: 'error', message: err.message, time: new Date().toISOString() });
     }
+  }
+
+  els.btnRefresh.addEventListener('click', () => {
+    startFetch(false, 'Fetching stars and downloads…');
   });
 
-  els.btnStarHistory.addEventListener('click', async () => {
-    setFetching(true, 'Fetching star history…');
-    try {
-      const result = await window.ghStats.runFetch({ includeStarHistory: true });
-      if (result.timing) timingStats = result.timing;
-      if (!result.ok) {
-        els.progressText.textContent = result.error || 'Fetch failed';
-        els.progressElapsed.textContent = formatDuration(result.ms);
-        stopTimer();
-      } else {
-        setFetching(false);
-      }
-      await loadDashboard();
-    } catch (err) {
-      els.progressText.textContent = err.message;
-      appendLog({ level: 'error', message: err.message, time: new Date().toISOString() });
-    }
+  els.btnStarHistory.addEventListener('click', () => {
+    startFetch(true, 'Fetching star history…');
   });
 
   if (window.ghStats) {
     window.ghStats.onFetchProgress((p) => {
+      if (p.phase === 'error') {
+        showFetchError(p.message || 'Fetch failed');
+        setAuthBadge('Error', 'error');
+        return;
+      }
       if (p.message) {
         if (p.phase === 'auth') startAuthTimer();
         else setFetching(true, p.message, p.startedAt);
       }
-      if (p.phase === 'error') setAuthBadge('Error', 'error');
     });
     window.ghStats.onFetchDone((payload) => {
       if (payload?.timing) timingStats = payload.timing;
       setFetching(false);
       loadDashboard();
       loadTimings();
+      checkAuth();
     });
     window.ghStats.onDashboardUpdated((data) => renderDashboard(data));
     window.ghStats.onLogEntry((entry) => appendLog(entry));

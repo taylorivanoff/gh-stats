@@ -140,12 +140,20 @@ body.platform-darwin .titlebar-drag {
   -webkit-app-region: no-drag;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-  min-width: 72px;
-  max-width: min(240px, 42vw);
+  min-width: 56px;
+  max-width: min(200px, 28vw);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.titlebar-drag .text-btn {
+  -webkit-app-region: no-drag;
+}
+
+.hidden {
+  display: none !important;
 }
 
 .auth-badge.pending {

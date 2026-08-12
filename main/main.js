@@ -1,6 +1,6 @@
 const { app, ipcMain } = require('electron');
 const path = require('path');
-const loadElectronTrayBase = require('./load-electron-tray-base');
+const loadElectronTrayBase = require('./load-electron-tray-base.cjs');
 const { configureAppIsolation, run } = loadElectronTrayBase();
 
 configureAppIsolation({

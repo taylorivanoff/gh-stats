@@ -31,7 +31,7 @@ Main analytics dashboard:
 
 ## Requirements
 
-- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`)
+- [GitHub CLI](https://cli.github.com/) (`gh`) — install and sign in from the app header if needed (`Install gh` / `Sign in`), or use `gh auth login` in a terminal
 
 ## Installation
 
