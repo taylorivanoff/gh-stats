@@ -8,7 +8,19 @@ Thumbs.db
 .env.*
 .release-staging/
 
+# Rust / Tauri build output (workspace root + crate dirs)
+/target
 src-tauri/target/
 src-tauri/target-check/
 src-tauri/gen/
+src-tauri/Cargo.lock
+
+# Local snapshot data from CLI / Action
+.gh-stats/
+.gh-stats-data/
+
+# Editor
+.idea/
+.vscode/
+*.swp
 

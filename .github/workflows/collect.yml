@@ -1,0 +1,20 @@
+name: Collect GhStats
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./action
+        with:
+          visibility: public
+          commit-snapshots: 'true'
+          include-traffic: 'true'

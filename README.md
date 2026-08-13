@@ -1,50 +1,77 @@
-# GhStats - GitHub Stars & Downloads Analytics Desktop App
+# GhStats - GitHub Stars & Downloads Analytics
 
 [![Release](https://img.shields.io/github/v/release/taylorivanoff/gh-stats)](https://github.com/taylorivanoff/gh-stats/releases)
 [![Downloads](https://img.shields.io/github/downloads/taylorivanoff/gh-stats/total)](https://github.com/taylorivanoff/gh-stats/releases)
 [![Stars](https://img.shields.io/github/stars/taylorivanoff/gh-stats)](https://github.com/taylorivanoff/gh-stats/stargazers)
 [![License](https://img.shields.io/github/license/taylorivanoff/gh-stats)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/demo-live-blue)](https://taylorivanoff.github.io/gh-stats/)
 
-**GhStats** is an open-source, cross-platform **desktop analytics dashboard** for your public GitHub repositories. Track stars and release download counts over time - totals, daily deltas, and rolling windows stored entirely on your machine.
+**GhStats** is an open-source, cross-platform **desktop analytics platform** for your GitHub repositories. Track stars, release downloads, GitHub traffic, npm/PyPI stats, and CI/release health - totals, daily deltas, and rolling windows stored entirely on your machine.
 
 Ideal for indie developers who want a lightweight **Google Analytics–style view** of GitHub engagement without shipping data to a third party.
 
 ## Features
 
-- KPI strip: total stars / downloads, today, 7d, and 30d windows
+### Analytics
+- KPI strip: stars, downloads, npm/PyPI, views/clones, today/7d/30d windows
 - Time ranges: **7d · 30d · 90d · All**
-- Charts: new stars per day, download deltas, cumulative stars, total downloads
-- Hover tooltips on delta charts showing which repos changed
-- **Health tab**: Attention / builds / releases to spot failed CI, missing assets, drafts, and missing publishes across many public repos
-- **Copy** buttons (panel + per-row) for pasteable triage notes
-- Per-repo table with stars, downloads, and 7d/30d star windows
-- Local snapshots + optional star-history cache (rate-limit aware)
-- Live fetch timer and rolling average timings
-- Toggleable debug log bar
-- Tray icon, splash screen, single-instance, window bounds persistence
-- Close hides to tray (Quit from tray menu)
+- Charts: new stars, download deltas, cumulative stars, total downloads
+- **Traffic tab**: page views, clones, top referrers - preserved beyond GitHub's 14-day limit
+- Per-repo table with registry download stats
 
-## Screenshots
+### Health triage
+- Attention panel: failed CI, missing assets, draft releases, no releases
+- Recent builds and releases with copy-paste triage notes
 
-Main analytics dashboard:
+### Platform
+- **Desktop app** (Tauri 2): Windows, macOS, Linux - tray icon, auto-fetch, updater
+- **CLI** (`gh-stats`): fetch, history, status, export, serve
+- **GitHub Action**: daily snapshot collection to `.gh-stats/`
+- **Web export**: static dashboard for GitHub Pages
 
-![GhStats main window](docs/images/main-window.png)
+### Onboarding
+- Demo data on first launch so charts render immediately
+- Auto star-history backfill in the background after first fetch
+- First-run wizard
 
 ## Requirements
 
-- [GitHub CLI](https://cli.github.com/) (`gh`) — install and sign in from the app header if needed (`Install gh` / `Sign in`), or use `gh auth login` in a terminal
+- [GitHub CLI](https://cli.github.com/) (`gh`) - install and sign in from the app header, or run `gh auth login`
 
 ## Installation
 
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/taylorivanoff/gh-stats/releases)
-2. Run the installer and follow the prompts
+2. Or: `winget install taylorivanoff.gh-stats` (see [packaging/winget](packaging/winget/))
 
 ### macOS
 
-1. Download the `.dmg` from [Releases](https://github.com/taylorivanoff/gh-stats/releases) and drag **GhStats** to Applications
-2. macOS may say the app is “damaged” — that is Gatekeeper blocking an unsigned download, not a bad file. Go to System Preferences → Security & Privacy, then “Open anyway”.
+1. Download the `.dmg` from [Releases](https://github.com/taylorivanoff/gh-stats/releases)
+2. Or: `brew install --cask ghstats` (see [packaging/homebrew](packaging/homebrew/))
+
+### Linux
+
+1. Download `.AppImage` or `.deb` from [Releases](https://github.com/taylorivanoff/gh-stats/releases)
+2. Install `gh` via your package manager
+
+### CLI only
+
+```bash
+# From releases (Linux x86_64)
+curl -fsSL -o gh-stats https://github.com/taylorivanoff/gh-stats/releases/latest/download/gh-stats-linux-x86_64
+chmod +x gh-stats && sudo mv gh-stats /usr/local/bin/
+
+# Or build from source
+cargo build --release --bin gh-stats-cli
+```
+
+### gh CLI extension
+
+```bash
+gh extension install taylorivanoff/gh-stats/extensions/gh-stats
+gh stats status
+```
 
 ## Development
 
@@ -53,50 +80,45 @@ bun install
 bun run start
 ```
 
-### Building
+Requires [tauri-tray-base](https://github.com/taylorivanoff/tauri-tray-base) checked out as a sibling directory.
 
 ```bash
-bun run release
+bun run release    # Build desktop installers
+cargo run --bin gh-stats-cli -- status   # CLI
+bun run lint
 ```
 
-### Releasing
-
-Bump the `version` in `package.json` and push to `master` (or run `bun run bump`). The GitHub Actions workflow builds Windows and macOS installers, uploads updater metadata, and creates a GitHub Release.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details.
 
 ## Usage
 
-1. Sign in with `gh auth login` if you have not already
-2. Launch GhStats — it auto-fetches public repo totals on first run (and every 24h)
-3. Use the range tabs (**7d / 30d / 90d / All**) to change the chart window
-4. Click **Refresh** to re-pull stars, release download totals, latest releases, and recent Actions runs
-5. Open the **Health** tab for Attention / Recent builds / Recent releases; **Copy** (panel or row) for pasteable triage notes
-6. Click **History** once to backfill star timelines via `gh api stargazers` (slow; rate-limit aware)
-7. Hover delta chart bars to see which repos contributed that day
-8. Click **Debug** to show or hide the log strip
-
-Download charts need **multiple daily snapshots** before deltas appear. Star charts need a **History** fetch for day-by-day stargazer detail (snapshot totals still plot without it).
+1. Sign in with `gh auth login` if needed
+2. Launch GhStats and click Refresh to pull your real GitHub data
+3. Use range tabs and view tabs (**Analytics · Traffic · Health**)
+4. Star history backfills automatically; use **History** to force a refresh
+5. Export: `gh-stats-cli export --format site --output ./dashboard`
 
 ## Data collection
 
 | Metric | Source | Notes |
 | --- | --- | --- |
-| Current stars | Configurable `gh repo list … --json stargazerCount` | Default: public repos, limit 1000 |
-| Current downloads | `gh api repos/{repo}/releases` per repo | Summed asset `download_count` + latest release metadata |
-| Latest builds | `gh api repos/{repo}/actions/runs` | Recent workflow conclusions for the Attention / Builds panels |
-| Star history | `gh api stargazers` with star timestamps | On-demand; paginated with delays |
-| Download trends | Local daily snapshots | Auto-refresh every 24h; deltas computed locally |
+| Stars | `gh repo list` | Configurable visibility: public, private, all |
+| Release downloads | `gh api repos/{repo}/releases` | Summed asset download counts |
+| GitHub traffic | `gh api repos/{repo}/traffic/*` | Snapshotted daily - preserved beyond 14 days |
+| npm / PyPI / crates.io | Public registry APIs | Auto-detected from repo manifests |
+| CI / releases | `gh api actions/runs`, releases | Health triage panels |
+| Star history | `gh api stargazers` | On-demand or auto backfill |
 
-GitHub does not expose historical download counts — only cumulative totals. Daily download charts appear after repeated snapshots over time.
+Logs: `%APPDATA%/gh-stats/logs/` (Windows), `~/Library/Application Support/gh-stats/` (macOS), `~/.local/share/gh-stats/` (Linux).
 
-Logs are written to `%APPDATA%/gh-stats/logs/gh-stats.log` (Windows) / the Electron userData folder on macOS/Linux.
 
 ## Keywords
 
-GitHub analytics, stars over time, release downloads, gh CLI dashboard, Electron desktop app, local GitHub stats, repository metrics
+GitHub analytics, stars over time, release downloads, gh CLI dashboard, Tauri desktop app, local GitHub stats, repository metrics, traffic preservation
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

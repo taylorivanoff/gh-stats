@@ -3,8 +3,12 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+use crate::registries::{detect_from_manifests, fetch_package_stats, DetectedPackages};
+use crate::traffic::{save_traffic_snapshot, TrafficSnapshot};
 
 const RELEASE_DELAY_MS: u64 = 200;
 const STAR_PAGE_DELAY_MS: u64 = 150;
@@ -19,6 +23,12 @@ pub struct RepoTotals {
     pub name: String,
     pub stars: u64,
     pub downloads: u64,
+    #[serde(default)]
+    pub npm_downloads: Option<u64>,
+    #[serde(default)]
+    pub pypi_downloads: Option<u64>,
+    #[serde(default)]
+    pub crate_downloads: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +153,8 @@ pub fn find_gh() -> Option<PathBuf> {
     } else if cfg!(target_os = "macos") {
         candidates.push(PathBuf::from("/opt/homebrew/bin/gh"));
         candidates.push(PathBuf::from("/usr/local/bin/gh"));
+    } else {
+        candidates.push(PathBuf::from("/usr/bin/gh"));
     }
 
     for c in candidates {
@@ -175,7 +187,6 @@ fn probe_gh_version(bin: &Path) -> Option<String> {
     let output = c.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     let line = text.lines().next()?.trim();
-    // "gh version 2.45.0 (2024-...)" → "2.45.0"
     let ver = line
         .strip_prefix("gh version ")
         .and_then(|s| s.split_whitespace().next())
@@ -222,7 +233,6 @@ fn find_winget() -> Option<PathBuf> {
         })
 }
 
-/// Install GitHub CLI. On Windows prefers winget; macOS uses brew; otherwise returns a download URL hint.
 pub fn install_gh() -> Result<String, String> {
     if find_gh().is_some() {
         return Ok("GitHub CLI is already installed.".into());
@@ -304,7 +314,6 @@ pub fn install_gh() -> Result<String, String> {
     }
 }
 
-/// Opens an interactive `gh auth login` (web) so the user can authenticate.
 pub fn start_auth_login() -> Result<String, String> {
     let bin = find_gh().ok_or_else(|| {
         "gh is not installed. Install GitHub CLI first.".to_string()
@@ -428,13 +437,17 @@ pub fn check_auth() -> (bool, Option<String>, Option<String>, u64) {
     }
 }
 
-fn list_repos() -> Result<Vec<Value>, String> {
+fn list_repos(visibility: &str) -> Result<Vec<Value>, String> {
+    let vis = match visibility {
+        "private" | "all" | "public" => visibility,
+        _ => "public",
+    };
     let stdout = run_gh(
         &[
             "repo",
             "list",
             "--visibility",
-            "public",
+            vis,
             "--limit",
             "1000",
             "--json",
@@ -447,6 +460,35 @@ fn list_repos() -> Result<Vec<Value>, String> {
         .as_array()
         .cloned()
         .ok_or_else(|| "gh repo list did not return a JSON array".into())
+}
+
+fn fetch_file_content(repo: &str, path: &str) -> Option<String> {
+    let api = format!("repos/{repo}/contents/{path}");
+    let stdout = run_gh(
+        &["api", &api, "--jq", ".content"],
+        30,
+    )
+    .ok()?;
+    let encoded = stdout.trim().trim_matches('"');
+    if encoded.is_empty() {
+        return None;
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded.replace('\n', ""))
+        .ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+fn detect_packages(repo: &str) -> DetectedPackages {
+    let package_json = fetch_file_content(repo, "package.json");
+    let pyproject = fetch_file_content(repo, "pyproject.toml");
+    let cargo = fetch_file_content(repo, "Cargo.toml");
+    detect_from_manifests(
+        package_json.as_deref(),
+        pyproject.as_deref(),
+        cargo.as_deref(),
+        repo,
+    )
 }
 
 fn parse_release_line(line: &str) -> Option<(u64, ReleaseInfo)> {
@@ -481,7 +523,6 @@ fn parse_release_line(line: &str) -> Option<(u64, ReleaseInfo)> {
     ))
 }
 
-/// Returns (total downloads across all releases, latest release if any).
 fn fetch_release_summary(repo: &str) -> (u64, Option<ReleaseInfo>) {
     let path = format!("repos/{repo}/releases");
     match run_gh(
@@ -575,6 +616,172 @@ fn fetch_recent_runs(repo: &str) -> Vec<WorkflowRunInfo> {
     }
 }
 
+pub fn fetch_traffic(repo: &str) -> Vec<TrafficSnapshot> {
+    let views_raw = run_gh(
+        &[
+            "api",
+            &format!("repos/{repo}/traffic/views"),
+            "--jq",
+            "{views: [.views[]? | {timestamp, count, uniques}]}",
+        ],
+        30,
+    )
+    .ok();
+    let clones_raw = run_gh(
+        &[
+            "api",
+            &format!("repos/{repo}/traffic/clones"),
+            "--jq",
+            "{clones: [.clones[]? | {timestamp, count, uniques}]}",
+        ],
+        30,
+    )
+    .ok();
+    if views_raw.is_none() && clones_raw.is_none() {
+        return vec![];
+    }
+
+    let referrers = run_gh(
+        &[
+            "api",
+            &format!("repos/{repo}/traffic/popular/referrers"),
+            "--jq",
+            ".[] | {referrer, count, uniques}",
+        ],
+        30,
+    )
+    .unwrap_or_default();
+    let paths = run_gh(
+        &[
+            "api",
+            &format!("repos/{repo}/traffic/popular/paths"),
+            "--jq",
+            ".[] | {path, count, uniques}",
+        ],
+        30,
+    )
+    .unwrap_or_default();
+
+    #[derive(Default, Clone)]
+    struct Day {
+        views: u64,
+        unique_views: u64,
+        clones: u64,
+        unique_clones: u64,
+    }
+    let mut by_day: std::collections::BTreeMap<String, Day> = std::collections::BTreeMap::new();
+
+    if let Some(raw) = views_raw.as_deref() {
+        if let Ok(v) = serde_json::from_str::<Value>(raw) {
+            if let Some(arr) = v.get("views").and_then(|x| x.as_array()) {
+                for row in arr {
+                    let Some(day) = row
+                        .get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|t| t.get(0..10).map(str::to_string))
+                    else {
+                        continue;
+                    };
+                    let e = by_day.entry(day).or_default();
+                    e.views = row.get("count").and_then(|x| x.as_u64()).unwrap_or(0);
+                    e.unique_views = row.get("uniques").and_then(|x| x.as_u64()).unwrap_or(0);
+                }
+            }
+        }
+    }
+    if let Some(raw) = clones_raw.as_deref() {
+        if let Ok(v) = serde_json::from_str::<Value>(raw) {
+            if let Some(arr) = v.get("clones").and_then(|x| x.as_array()) {
+                for row in arr {
+                    let Some(day) = row
+                        .get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|t| t.get(0..10).map(str::to_string))
+                    else {
+                        continue;
+                    };
+                    let e = by_day.entry(day).or_default();
+                    e.clones = row.get("count").and_then(|x| x.as_u64()).unwrap_or(0);
+                    e.unique_clones = row.get("uniques").and_then(|x| x.as_u64()).unwrap_or(0);
+                }
+            }
+        }
+    }
+
+    if by_day.is_empty() {
+        return vec![];
+    }
+
+    let mut referrer_entries = Vec::new();
+    for line in referrers.lines() {
+        if let Ok(v) = serde_json::from_str::<Value>(line) {
+            let name = v
+                .get("referrer")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            referrer_entries.push(crate::traffic::ReferrerEntry {
+                referrer: name,
+                count: v.get("count").and_then(|x| x.as_u64()).unwrap_or(0),
+                uniques: v.get("uniques").and_then(|x| x.as_u64()).unwrap_or(0),
+            });
+        }
+    }
+
+    let mut path_entries = Vec::new();
+    for line in paths.lines() {
+        if let Ok(v) = serde_json::from_str::<Value>(line) {
+            let p = v
+                .get("path")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            if p.is_empty() {
+                continue;
+            }
+            path_entries.push(crate::traffic::PathEntry {
+                path: p,
+                count: v.get("count").and_then(|x| x.as_u64()).unwrap_or(0),
+                uniques: v.get("uniques").and_then(|x| x.as_u64()).unwrap_or(0),
+            });
+        }
+    }
+
+    let last_day = by_day.keys().next_back().cloned();
+    let now = chrono::Utc::now().timestamp_millis();
+    by_day
+        .into_iter()
+        .map(|(date, day)| {
+            let is_latest = last_day.as_ref() == Some(&date);
+            TrafficSnapshot {
+                repo: repo.to_string(),
+                date,
+                timestamp: now,
+                views: day.views,
+                unique_views: day.unique_views,
+                clones: day.clones,
+                unique_clones: day.unique_clones,
+                referrers: if is_latest {
+                    referrer_entries.clone()
+                } else {
+                    vec![]
+                },
+                paths: if is_latest { path_entries.clone() } else { vec![] },
+            }
+        })
+        .collect()
+}
+
+pub fn fetch_and_save_traffic(user_data: &Path, repo: &str) -> Result<(), String> {
+    for snapshot in fetch_traffic(repo) {
+        save_traffic_snapshot(user_data, &snapshot)?;
+    }
+    Ok(())
+}
+
 fn classify_issues(
     latest_release: &Option<ReleaseInfo>,
     recent_runs: &[WorkflowRunInfo],
@@ -607,7 +814,10 @@ fn classify_issues(
             .as_deref()
             .unwrap_or("")
             .to_lowercase();
-        if status == "in_progress" || status == "queued" || status == "waiting" || status == "pending"
+        if status == "in_progress"
+            || status == "queued"
+            || status == "waiting"
+            || status == "pending"
         {
             issues.push(RepoIssue {
                 kind: "ci_pending".into(),
@@ -712,11 +922,34 @@ fn build_health_views(repos: &[RepoHealth]) -> (Vec<Value>, Vec<Value>, Vec<Valu
     (issues, builds, releases)
 }
 
-pub fn fetch_current_totals<F>(mut on_progress: F) -> Result<FetchTotals, String>
+pub struct FetchOptions {
+    pub visibility: String,
+    pub include_traffic: bool,
+    pub include_registries: bool,
+}
+
+impl Default for FetchOptions {
+    fn default() -> Self {
+        Self {
+            visibility: "public".into(),
+            include_traffic: true,
+            include_registries: true,
+        }
+    }
+}
+
+pub fn fetch_current_totals<F>(on_progress: F) -> Result<FetchTotals, String>
 where
     F: FnMut(serde_json::Value),
 {
-    let repos = list_repos()?;
+    fetch_current_totals_with_options(FetchOptions::default(), on_progress)
+}
+
+pub fn fetch_current_totals_with_options<F>(options: FetchOptions, mut on_progress: F) -> Result<FetchTotals, String>
+where
+    F: FnMut(serde_json::Value),
+{
+    let repos = list_repos(&options.visibility)?;
     let mut results = Vec::new();
     let mut health_repos = Vec::new();
     let mut stars = 0u64;
@@ -746,12 +979,22 @@ where
         let latest_run = recent_runs.first().cloned();
         let issues = classify_issues(&latest_release, &recent_runs);
 
+        let packages = if options.include_registries {
+            let detected = detect_packages(&name);
+            fetch_package_stats(&detected)
+        } else {
+            crate::registries::PackageStats::default()
+        };
+
         stars += repo_stars;
         downloads += repo_downloads;
         results.push(RepoTotals {
             name: name.clone(),
             stars: repo_stars,
             downloads: repo_downloads,
+            npm_downloads: packages.npm,
+            pypi_downloads: packages.pypi,
+            crate_downloads: packages.crates_io,
         });
         health_repos.push(RepoHealth {
             name: name.clone(),
@@ -762,6 +1005,15 @@ where
             recent_runs,
             issues,
         });
+
+        if options.include_traffic {
+            on_progress(serde_json::json!({
+                "phase": "traffic",
+                "current": i + 1,
+                "total": total,
+                "repo": name
+            }));
+        }
 
         if i + 1 < total {
             std::thread::sleep(Duration::from_millis(RELEASE_DELAY_MS));
@@ -793,6 +1045,28 @@ where
         totals: Totals { stars, downloads },
         health,
     })
+}
+
+pub fn fetch_traffic_for_repos<F>(user_data: &Path, repos: &[String], mut on_progress: F) -> Result<u64, String>
+where
+    F: FnMut(Value),
+{
+    let mut saved = 0u64;
+    for (i, repo) in repos.iter().enumerate() {
+        on_progress(json!({
+            "phase": "traffic",
+            "current": i + 1,
+            "total": repos.len(),
+            "repo": repo
+        }));
+        if fetch_and_save_traffic(user_data, repo).is_ok() {
+            saved += 1;
+        }
+        if i + 1 < repos.len() {
+            std::thread::sleep(Duration::from_millis(RELEASE_DELAY_MS));
+        }
+    }
+    Ok(saved)
 }
 
 pub fn health_path(user_data: &Path) -> PathBuf {
@@ -911,4 +1185,22 @@ pub fn load_all_star_histories(
         }
     }
     out
+}
+
+pub fn default_data_dir() -> PathBuf {
+    if cfg!(windows) {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("gh-stats");
+        }
+    } else if cfg!(target_os = "macos") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("gh-stats");
+        }
+    } else if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join(".local").join("share").join("gh-stats");
+    }
+    PathBuf::from(".gh-stats-data")
 }

@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
- * Manually bump version across package.json, Cargo.toml, and tauri.conf.json,
- * then commit and push.
- * CI already auto patch-bumps on every master/main push; use this for
- * minor/major bumps, or when you want to set the version yourself.
+ * Bump the workspace version (Cargo.toml [workspace.package]), then mirror
+ * it into package.json. Tauri reads the Cargo package version; member crates
+ * inherit via version.workspace = true.
  *
  * Usage:
- *   node scripts/bump-version.js [patch|minor|major]
- *   npm run bump
- *   npm run bump -- minor
+ *   bun run bump
+ *   bun run bump -- minor
  */
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
+const cargoPath = path.join(root, 'Cargo.toml');
 const pkgPath = path.join(root, 'package.json');
 const level = (process.argv[2] || 'patch').toLowerCase();
 
@@ -31,19 +30,53 @@ function runCapture(cmd) {
   return run(cmd, { silent: true }).trim();
 }
 
-function syncTauriVersion(version) {
-  const cargoPath = path.join(root, 'src-tauri', 'Cargo.toml');
-  if (fs.existsSync(cargoPath)) {
-    let cargo = fs.readFileSync(cargoPath, 'utf8');
-    cargo = cargo.replace(/^version = ".*"$/m, `version = "${version}"`);
-    fs.writeFileSync(cargoPath, cargo);
+function readWorkspaceVersion() {
+  const text = fs.readFileSync(cargoPath, 'utf8');
+  const match = text.match(/\[workspace\.package\][\s\S]*?^version = "([^"]+)"/m);
+  if (!match) throw new Error('Could not find [workspace.package] version in Cargo.toml');
+  return match[1];
+}
+
+function writeWorkspaceVersion(version) {
+  let text = fs.readFileSync(cargoPath, 'utf8');
+  text = text.replace(
+    /(\[workspace\.package\][\s\S]*?)^version = "[^"]+"/m,
+    `$1version = "${version}"`
+  );
+  fs.writeFileSync(cargoPath, text);
+}
+
+function bumpSemver(version, kind) {
+  const parts = version.split('.').map((n) => Number.parseInt(n, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+    throw new Error(`Invalid semver "${version}"`);
+  }
+  if (kind === 'major') return `${parts[0] + 1}.0.0`;
+  if (kind === 'minor') return `${parts[0]}.${parts[1] + 1}.0`;
+  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+}
+
+function writePackageJsonVersion(version) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  pkg.version = version;
+  fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function writePackagingVersions(version) {
+  const brew = path.join(root, 'packaging', 'homebrew', 'GhStats.rb');
+  if (fs.existsSync(brew)) {
+    let text = fs.readFileSync(brew, 'utf8');
+    text = text.replace(/^version: .*$/m, `version: ${version}`);
+    fs.writeFileSync(brew, text);
   }
 
-  const confPath = path.join(root, 'src-tauri', 'tauri.conf.json');
-  if (fs.existsSync(confPath)) {
-    const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
-    conf.version = version;
-    fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+  const winget = path.join(root, 'packaging', 'winget', 'taylorivanoff.gh-stats.yaml');
+  if (fs.existsSync(winget)) {
+    let text = fs.readFileSync(winget, 'utf8');
+    text = text.replace(/^PackageVersion: .*$/m, `PackageVersion: ${version}`);
+    text = text.replace(/\/download\/v[\d.]+/g, `/download/v${version}`);
+    text = text.replace(/GhStats_[\d.]+_/g, `GhStats_${version}_`);
+    fs.writeFileSync(winget, text);
   }
 }
 
@@ -67,21 +100,19 @@ if (behind !== '0') {
   process.exit(1);
 }
 
-const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-const oldVersion = pkg.version;
-run(`npm version ${level} --no-git-tag-version`);
-const newVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
-syncTauriVersion(newVersion);
+const oldVersion = readWorkspaceVersion();
+const newVersion = bumpSemver(oldVersion, level);
+writeWorkspaceVersion(newVersion);
+writePackageJsonVersion(newVersion);
+writePackagingVersions(newVersion);
 
-const toAdd = ['package.json'];
-if (fs.existsSync(path.join(root, 'src-tauri', 'Cargo.toml'))) {
-  toAdd.push('src-tauri/Cargo.toml');
-}
-if (fs.existsSync(path.join(root, 'src-tauri', 'tauri.conf.json'))) {
-  toAdd.push('src-tauri/tauri.conf.json');
-}
-for (const lock of ['package-lock.json', 'bun.lock', 'bun.lockb', 'yarn.lock']) {
-  if (fs.existsSync(path.join(root, lock))) toAdd.push(lock);
+const toAdd = ['Cargo.toml', 'package.json'];
+for (const extra of [
+  'packaging/homebrew/GhStats.rb',
+  'packaging/winget/taylorivanoff.gh-stats.yaml',
+  'bun.lock'
+]) {
+  if (fs.existsSync(path.join(root, extra))) toAdd.push(extra);
 }
 
 run(`git add -- ${toAdd.join(' ')}`);

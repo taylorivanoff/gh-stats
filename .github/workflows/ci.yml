@@ -29,6 +29,9 @@ jobs:
         working-directory: app
         run: bun run lint
         continue-on-error: true
-      - name: Cargo check
-        working-directory: app/src-tauri
+      - name: Cargo check (core)
+        working-directory: app/crates/gh-stats-core
         run: cargo check
+      - name: Cargo check (desktop + CLI)
+        working-directory: app/src-tauri
+        run: cargo check --bins

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# gh CLI extension — wraps the gh-stats binary
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$SCRIPT_DIR/../.."
+BIN=""
+for candidate in \
+  "$ROOT/target/release/gh-stats-cli" \
+  "$ROOT/src-tauri/target/release/gh-stats-cli"
+do
+  if [ -x "$candidate" ]; then
+    BIN="$candidate"
+    break
+  fi
+done
+
+if [ -z "$BIN" ]; then
+  if command -v gh-stats-cli >/dev/null 2>&1; then
+    exec gh-stats-cli "$@"
+  fi
+  echo "gh-stats-cli binary not found. Install from https://github.com/taylorivanoff/gh-stats/releases" >&2
+  echo "Or build: cargo build --release --bin gh-stats-cli" >&2
+  exit 1
+fi
+
+exec "$BIN" "$@"

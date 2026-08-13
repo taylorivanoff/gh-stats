@@ -1,18 +1,25 @@
 [package]
 name = "gh-stats"
-version = "1.0.8"
+version.workspace = true
 description = "Local GitHub stars and release download analytics"
-authors = ["Taylor Ivanoff"]
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "gh-stats"
 
 [lib]
 name = "gh_stats_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "gh-stats-cli"
+path = "src/bin/gh-stats-cli.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+gh-stats-core = { path = "../crates/gh-stats-core" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-autostart = "2"
@@ -23,3 +30,4 @@ serde_json = "1"
 parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 which = "7"
+tiny_http = "0.12"

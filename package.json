@@ -1,10 +1,10 @@
 {
   "name": "gh-stats",
-  "description": "Local GitHub stars, downloads, builds, and release health for your public repos.",
+  "description": "Local GitHub portfolio analytics - stars, downloads, traffic, registries, and release health.",
   "author": {
     "name": "Taylor Ivanoff"
   },
-  "version": "1.0.8",
+  "version": "1.1.0",
   "repository": "https://github.com/taylorivanoff/gh-stats",
   "license": "MIT",
   "scripts": {

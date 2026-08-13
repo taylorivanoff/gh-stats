@@ -31,13 +31,13 @@ jobs:
 
           is_release_relevant() {
             case "$1" in
-              package.json|src-tauri/tauri.conf.json|src-tauri/Cargo.toml|Cargo.lock)
+              package.json|Cargo.toml|Cargo.lock|src-tauri/tauri.conf.json|src-tauri/Cargo.toml)
                 return 0
                 ;;
               *.js|*.mjs|*.cjs|*.rs|*.html|*.css)
                 return 0
                 ;;
-              src-tauri/*|renderer/*|sidecar/*)
+              src-tauri/*|renderer/*|sidecar/*|crates/*|action/*|packaging/*|extensions/*)
                 return 0
                 ;;
             esac
@@ -53,34 +53,51 @@ jobs:
             fi
           done <<< "$CHANGED"
 
+          cargo_version() {
+            awk '
+              $0 == "[workspace.package]" { in_pkg = 1; next }
+              in_pkg && /^\[/ { in_pkg = 0 }
+              in_pkg && $1 == "version" {
+                gsub(/"/, "", $3)
+                print $3
+                exit
+              }
+            ' Cargo.toml
+          }
+
           if [ "$SHOULD_RELEASE" != true ]; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+            echo "version=$(cargo_version)" >> "$GITHUB_OUTPUT"
             echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          CURRENT=$(jq -r .version package.json)
+          CURRENT=$(cargo_version)
           if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-            OLD=$(git show HEAD^:package.json | jq -r .version)
+            OLD=$(git show HEAD^:Cargo.toml | awk '
+              $0 == "[workspace.package]" { in_pkg = 1; next }
+              in_pkg && /^\[/ { in_pkg = 0 }
+              in_pkg && $1 == "version" {
+                gsub(/"/, "", $3)
+                print $3
+                exit
+              }
+            ')
           else
             OLD=""
           fi
 
           if [ -n "$OLD" ] && [ "$OLD" = "$CURRENT" ]; then
-            npm version patch --no-git-tag-version
-            CURRENT=$(jq -r .version package.json)
-            # Keep tauri.conf.json in sync
-            if [ -f src-tauri/tauri.conf.json ]; then
-              jq --arg v "$CURRENT" '.version = $v' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
-              mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
-            fi
-            if [ -f src-tauri/Cargo.toml ]; then
-              sed -i "s/^version = \".*\"/version = \"$CURRENT\"/" src-tauri/Cargo.toml
-            fi
+            IFS=. read -r MAJ MIN PAT <<EOF
+$CURRENT
+EOF
+            CURRENT="${MAJ}.${MIN}.$((PAT + 1))"
+            sed -i "/^\\[workspace.package\\]/,/^\\[/{s/^version = \".*\"/version = \"$CURRENT\"/;}" Cargo.toml
+            jq --arg v "$CURRENT" '.version = $v' package.json > package.json.tmp
+            mv package.json.tmp package.json
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml || true
+            git add Cargo.toml package.json
             git commit -m "chore: bump version to ${CURRENT}"
             git push
           fi
@@ -100,6 +117,8 @@ jobs:
             args: --bundles nsis
           - platform: macos-latest
             args: --bundles dmg
+          - platform: ubuntu-22.04
+            args: --bundles appimage,deb
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout app
@@ -113,6 +132,11 @@ jobs:
           repository: taylorivanoff/tauri-tray-base
           path: tauri-tray-base
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: oven-sh/setup-bun@v2
       - name: Install frontend deps
         working-directory: app
@@ -143,3 +167,14 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+      - name: Build CLI binary
+        working-directory: app
+        run: cargo build --release --bin gh-stats-cli
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh-stats-cli-${{ matrix.platform }}
+          path: |
+            app/target/release/gh-stats-cli
+            app/target/release/gh-stats-cli.exe
+          if-no-files-found: warn

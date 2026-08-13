@@ -50,5 +50,8 @@
     getLogs: (limit) => invoke("logs_get", { limit: limit || 80 }),
     getLogPath: () => invoke("logs_path"),
     onLogEntry: (cb) => onEvent("log:entry", cb),
+    seedDemo: () => invoke("seed_demo"),
+    completeOnboarding: () => invoke("complete_onboarding"),
+    dismissDemo: () => invoke("dismiss_demo"),
   };
 })();

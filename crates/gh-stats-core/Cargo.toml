@@ -1,0 +1,15 @@
+[package]
+name = "gh-stats-core"
+version.workspace = true
+description = "Core library for GhStats — GitHub portfolio analytics"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+which = "7"
+ureq = { version = "2", default-features = false, features = ["json"] }
+base64 = "0.22"

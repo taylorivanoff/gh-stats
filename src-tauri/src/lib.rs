@@ -1,13 +1,11 @@
-mod analytics;
-mod collector;
 mod commands;
 mod logger;
-mod store;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use gh_stats_core::settings::{load_settings, needs_auto_fetch};
 use serde_json::json;
 use tauri::{Listener, Manager};
 use tauri_tray_base::{
@@ -19,6 +17,7 @@ pub struct AppRuntime {
     pub fetch_in_progress: AtomicBool,
     pub renderer_ready: AtomicBool,
     pub pending_auto_fetch: AtomicBool,
+    pub pending_auto_history: AtomicBool,
     pub log: Arc<logger::Logger>,
 }
 
@@ -31,6 +30,7 @@ pub fn run() {
             fetch_in_progress: AtomicBool::new(false),
             renderer_ready: AtomicBool::new(false),
             pending_auto_fetch: AtomicBool::new(false),
+            pending_auto_history: AtomicBool::new(false),
             log: log.clone(),
         })
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +48,9 @@ pub fn run() {
             commands::timings_get,
             commands::logs_get,
             commands::logs_path,
+            commands::seed_demo,
+            commands::complete_onboarding,
+            commands::dismiss_demo,
         ])
         .setup(move |app| {
             let mut defaults = HashMap::new();
@@ -58,6 +61,10 @@ pub fn run() {
             defaults.insert("activeView".into(), json!("analytics"));
             defaults.insert("timings".into(), json!([]));
             defaults.insert("lastFetchAt".into(), json!(null));
+            defaults.insert("repoVisibility".into(), json!("public"));
+            defaults.insert("onboardingComplete".into(), json!(false));
+            defaults.insert("demoMode".into(), json!(false));
+            defaults.insert("autoStarHistory".into(), json!(true));
 
             install_state(
                 app.handle(),
@@ -77,10 +84,7 @@ pub fn run() {
             apply_window_settings(app.handle());
             sync_autostart(app.handle());
 
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| ".".into());
+            let data_dir = user_data(app.handle());
             let _ = std::fs::create_dir_all(data_dir.join("logs"));
             log.set_file(data_dir.join("logs").join("gh-stats.log"));
             log.info("GhStats starting", json!({ "version": app.package_info().version.to_string() }));
@@ -93,36 +97,24 @@ pub fn run() {
                     log_for_tray.info("Tray refresh", json!({}));
                     let app = handle.clone();
                     std::thread::spawn(move || {
-                        let _ = commands::run_fetch_blocking(&app, false);
+                        let _ = commands::run_fetch_blocking(&app, false, false);
                     });
                 }
             });
 
-            // Seed pending auto-fetch from settings.
-            if let Some(state) = app.try_state::<tauri_tray_base::TrayBaseState>() {
-                let settings = state.settings.lock().clone();
-                let last = settings
-                    .extra
-                    .get("lastFetchAt")
-                    .and_then(|v| v.as_i64())
-                    .or_else(|| settings.extra.get("lastFetchAt").and_then(|v| v.as_u64()).map(|u| u as i64));
-                let hours = settings
-                    .extra
-                    .get("autoFetchHours")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(24);
-                let needs = match last {
-                    None => true,
-                    Some(ts) => {
-                        let now = chrono::Utc::now().timestamp_millis();
-                        now - ts > (hours as i64) * 60 * 60 * 1000
-                    }
-                };
-                if needs {
-                    app.state::<AppRuntime>()
-                        .pending_auto_fetch
-                        .store(true, Ordering::SeqCst);
-                }
+            let data_dir = user_data(app.handle());
+            let _ = gh_stats_core::store::sync_from_dot_gh_stats(&data_dir);
+
+            let settings = load_settings(&data_dir);
+            if needs_auto_fetch(&data_dir) {
+                app.state::<AppRuntime>()
+                    .pending_auto_fetch
+                    .store(true, Ordering::SeqCst);
+            }
+            if settings.auto_star_history && !settings.star_history_loaded {
+                app.state::<AppRuntime>()
+                    .pending_auto_history
+                    .store(true, Ordering::SeqCst);
             }
 
             Ok(())
@@ -134,4 +126,10 @@ pub fn run() {
     builder
         .run(tauri::generate_context!())
         .expect("error while running gh-stats");
+}
+
+pub fn user_data(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| gh_stats_core::collector::default_data_dir())
 }

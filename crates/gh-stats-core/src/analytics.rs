@@ -2,6 +2,7 @@ use serde_json::{json, Map, Value};
 
 use crate::collector::{date_key, HealthSnapshot};
 use crate::store::Snapshot;
+use crate::traffic::{aggregate_traffic_series, TrafficSnapshot};
 
 fn days_ago(n: i64) -> String {
     (chrono::Utc::now() - chrono::Duration::days(n))
@@ -282,6 +283,7 @@ pub fn build_dashboard(
     star_histories: &Map<String, Value>,
     range_days: Value,
     health: Option<&HealthSnapshot>,
+    traffic: &[TrafficSnapshot],
 ) -> Value {
     let today = date_key();
     let mut sorted = snapshots.to_vec();
@@ -325,6 +327,29 @@ pub fn build_dashboard(
         past.map(|p| cur.saturating_sub(p)).unwrap_or(0)
     };
 
+    let total_npm: u64 = current_repos.iter().filter_map(|r| r.npm_downloads).sum();
+    let total_pypi: u64 = current_repos.iter().filter_map(|r| r.pypi_downloads).sum();
+    let total_crates: u64 = current_repos.iter().filter_map(|r| r.crate_downloads).sum();
+
+    let traffic_agg = aggregate_traffic_series(traffic, &start_date, &today);
+    let traffic_daily = traffic_agg.get("daily").cloned().unwrap_or(json!([]));
+    let traffic_views_14d: u64 = traffic_daily
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| d.get("views").and_then(|v| v.as_u64()))
+                .sum()
+        })
+        .unwrap_or(0);
+    let traffic_clones_14d: u64 = traffic_daily
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| d.get("clones").and_then(|v| v.as_u64()))
+                .sum()
+        })
+        .unwrap_or(0);
+
     let metrics = json!({
         "totalStars": current_stars,
         "totalDownloads": current_downloads,
@@ -346,6 +371,11 @@ pub fn build_dashboard(
         "downloadsToday": metric(current_downloads, before_today.map(|s| s.totals.downloads)),
         "downloads7d": metric(current_downloads, before_7d.map(|s| s.totals.downloads)),
         "downloads30d": metric(current_downloads, before_30d.map(|s| s.totals.downloads)),
+        "npmDownloads": total_npm,
+        "pypiDownloads": total_pypi,
+        "crateDownloads": total_crates,
+        "views14d": traffic_views_14d,
+        "clones14d": traffic_clones_14d,
     });
 
     let (star_daily, star_cum) = if has_star_history {
@@ -355,7 +385,6 @@ pub fn build_dashboard(
             &today,
         );
         let mut running = 0u64;
-        // sum before start
         for (day, count) in &merged {
             if day.as_str() < start_date.as_str() {
                 running += count.as_u64().unwrap_or(0);
@@ -413,6 +442,9 @@ pub fn build_dashboard(
                 "name": r.name,
                 "stars": r.stars,
                 "downloads": r.downloads,
+                "npmDownloads": r.npm_downloads,
+                "pypiDownloads": r.pypi_downloads,
+                "crateDownloads": r.crate_downloads,
                 "stars7d": if has_star_history { sum_daily_map(&hist_daily, &days_ago(7), &today) } else { 0 },
                 "stars30d": if has_star_history { sum_daily_map(&hist_daily, &days_ago(30), &today) } else { 0 },
             })
@@ -429,13 +461,15 @@ pub fn build_dashboard(
                 &snapshot_delta_points(&sorted, "downloads", &start_date, &today),
                 &start_date,
                 &today
-            )
+            ),
+            "traffic": traffic_agg,
         },
         "repos": repos,
         "health": health_payload(health),
         "meta": {
             "snapshotCount": sorted.len(),
             "hasStarHistory": has_star_history,
+            "hasTraffic": !traffic.is_empty(),
             "rangeStart": start_date,
             "rangeEnd": today,
             "lastSnapshotAt": latest.map(|s| s.timestamp)

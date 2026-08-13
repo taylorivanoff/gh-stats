@@ -58,13 +58,8 @@
     rangeTabs: document.getElementById('range-tabs'),
     healthTabCount: document.getElementById('health-tab-count'),
     viewAnalytics: document.getElementById('view-analytics'),
+    viewTraffic: document.getElementById('view-traffic'),
     viewHealth: document.getElementById('view-health'),
-    charts: {
-      starsDaily: document.getElementById('chart-stars-daily'),
-      downloadsDaily: document.getElementById('chart-downloads-daily'),
-      starsCumulative: document.getElementById('chart-stars-cumulative'),
-      downloadsTotal: document.getElementById('chart-downloads-total')
-    },
     mainPanels: document.getElementById('main-panels'),
     splitTable: document.getElementById('split-table'),
     issuesList: document.getElementById('issues-list'),
@@ -75,7 +70,22 @@
     releasesMeta: document.getElementById('releases-meta'),
     btnCopyIssues: document.getElementById('btn-copy-issues'),
     btnCopyBuilds: document.getElementById('btn-copy-builds'),
-    btnCopyReleases: document.getElementById('btn-copy-releases')
+    btnCopyReleases: document.getElementById('btn-copy-releases'),
+    trafficKpiGrid: document.getElementById('traffic-kpi-grid'),
+    referrersList: document.getElementById('referrers-list'),
+    onboardingOverlay: document.getElementById('onboarding-overlay'),
+    btnOnboardingStart: document.getElementById('btn-onboarding-start'),
+    btnOnboardingDismiss: document.getElementById('btn-onboarding-dismiss'),
+    demoBanner: document.getElementById('demo-banner'),
+    btnDismissDemo: document.getElementById('btn-dismiss-demo'),
+    charts: {
+      starsDaily: document.getElementById('chart-stars-daily'),
+      downloadsDaily: document.getElementById('chart-downloads-daily'),
+      starsCumulative: document.getElementById('chart-stars-cumulative'),
+      downloadsTotal: document.getElementById('chart-downloads-total'),
+      trafficViews: document.getElementById('chart-traffic-views'),
+      trafficClones: document.getElementById('chart-traffic-clones')
+    }
   };
 
   let ghBusy = false;
@@ -88,14 +98,19 @@
   const EMPTY_DASHBOARD = {
     metrics: {
       totalStars: 0, totalDownloads: 0, starsToday: 0, stars7d: 0, stars30d: 0,
-      downloadsToday: 0, downloads7d: 0, downloads30d: 0
+      downloadsToday: 0, downloads7d: 0, downloads30d: 0,
+      npmDownloads: 0, pypiDownloads: 0, crateDownloads: 0,
+      views14d: 0, clones14d: 0
     },
     series: {
-      starsDaily: [], starsCumulative: [], downloadsDaily: [], downloadsTotal: []
+      starsDaily: [], starsCumulative: [], downloadsDaily: [], downloadsTotal: [],
+      traffic: { daily: [], referrers: [] }
     },
     repos: [],
     health: { fetchedAt: null, issueCount: 0, issues: [], builds: [], releases: [] },
-    meta: { snapshotCount: 0, hasStarHistory: false, lastSnapshotAt: null }
+    meta: { snapshotCount: 0, hasStarHistory: false, hasTraffic: false, lastSnapshotAt: null },
+    demoMode: false,
+    onboardingComplete: false
   };
 
   function clamp(n, min, max) {
@@ -109,7 +124,8 @@
 
   function maxTableHeight() {
     if (!els.mainPanels) return 480;
-    const reserved = KPI_H + 6 + 120 + SPLITTER_SIZE;
+    const kpiH = els.kpiGrid?.offsetHeight || KPI_H;
+    const reserved = kpiH + 6 + 120 + SPLITTER_SIZE;
     return clamp(Math.floor(els.mainPanels.clientHeight - reserved), 72, 480);
   }
 
@@ -165,19 +181,23 @@
   }
 
   function setView(view, { persist = true } = {}) {
-    currentView = view === 'health' ? 'health' : 'analytics';
+    currentView = ['health', 'traffic'].includes(view) ? view : 'analytics';
     const isHealth = currentView === 'health';
-    els.viewAnalytics?.classList.toggle('hidden', isHealth);
+    const isTraffic = currentView === 'traffic';
+    const isAnalytics = currentView === 'analytics';
+    els.viewAnalytics?.classList.toggle('hidden', !isAnalytics);
+    els.viewTraffic?.classList.toggle('hidden', !isTraffic);
     els.viewHealth?.classList.toggle('hidden', !isHealth);
-    if (els.viewAnalytics) els.viewAnalytics.hidden = isHealth;
+    if (els.viewAnalytics) els.viewAnalytics.hidden = !isAnalytics;
+    if (els.viewTraffic) els.viewTraffic.hidden = !isTraffic;
     if (els.viewHealth) els.viewHealth.hidden = !isHealth;
-    els.rangeTabs?.classList.toggle('is-hidden', isHealth);
+    els.rangeTabs?.classList.toggle('is-hidden', !isAnalytics && !isTraffic);
     els.viewTabs?.querySelectorAll('.view-tab').forEach((btn) => {
       const active = btn.dataset.view === currentView;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', active ? 'true' : 'false');
     });
-    if (!isHealth && lastDashboard) {
+    if ((isAnalytics || isTraffic) && lastDashboard) {
       requestAnimationFrame(() => renderCharts(lastDashboard));
     }
     if (persist) {
@@ -563,13 +583,49 @@
       { label: 'Stars 30d', value: metrics.stars30d },
       { label: 'DL today', value: metrics.downloadsToday },
       { label: 'DL 7d', value: metrics.downloads7d },
-      { label: 'DL 30d', value: metrics.downloads30d }
+      { label: 'DL 30d', value: metrics.downloads30d },
+      { label: 'npm (30d)', value: metrics.npmDownloads },
+      { label: 'PyPI (30d)', value: metrics.pypiDownloads },
+      { label: 'Views 14d', value: metrics.views14d },
+      { label: 'Clones 14d', value: metrics.clones14d }
     ];
     els.kpiGrid.innerHTML = cards.map((c) => `
       <article class="kpi-card">
         <div class="kpi-label">${c.label}</div>
         <div class="kpi-value">${formatNumber(c.value)}</div>
       </article>
+    `).join('');
+  }
+
+  function renderTrafficKpis(metrics) {
+    if (!els.trafficKpiGrid) return;
+    const cards = [
+      { label: 'Views (14d)', value: metrics.views14d },
+      { label: 'Clones (14d)', value: metrics.clones14d },
+      { label: 'npm downloads', value: metrics.npmDownloads },
+      { label: 'PyPI downloads', value: metrics.pypiDownloads },
+      { label: 'crates.io', value: metrics.crateDownloads }
+    ];
+    els.trafficKpiGrid.innerHTML = cards.map((c) => `
+      <article class="kpi-card">
+        <div class="kpi-label">${c.label}</div>
+        <div class="kpi-value">${formatNumber(c.value)}</div>
+      </article>
+    `).join('');
+  }
+
+  function renderReferrers(traffic) {
+    if (!els.referrersList) return;
+    const referrers = traffic?.referrers || [];
+    if (!referrers.length) {
+      els.referrersList.innerHTML = '<div class="ops-empty">Refresh to collect referrer data (preserved beyond GitHub\'s 14-day limit)</div>';
+      return;
+    }
+    els.referrersList.innerHTML = referrers.map((r) => `
+      <div class="referrer-row">
+        <span class="referrer-name">${escapeHtml(r.referrer || '(direct)')}</span>
+        <span class="referrer-count">${formatNumber(r.count)} views · ${formatNumber(r.uniques)} unique</span>
+      </div>
     `).join('');
   }
 
@@ -580,6 +636,8 @@
         <td><a href="https://github.com/${r.name}" target="_blank" rel="noopener">${r.name}</a></td>
         <td class="num">${formatNumber(r.stars)}</td>
         <td class="num">${formatNumber(r.downloads)}</td>
+        <td class="num">${formatNumber(r.npmDownloads || 0)}</td>
+        <td class="num">${formatNumber(r.pypiDownloads || 0)}</td>
         <td class="num">${formatNumber(r.stars7d)}</td>
         <td class="num">${formatNumber(r.stars30d)}</td>
       </tr>
@@ -615,6 +673,29 @@
       emptyText: 'Refresh to load totals',
       interactive: false
     });
+
+    const traffic = data.series.traffic || { daily: [] };
+    const viewsSeries = (traffic.daily || []).map((d) => ({ date: d.date, value: d.views || 0 }));
+    const clonesSeries = (traffic.daily || []).map((d) => ({ date: d.date, value: d.clones || 0 }));
+    const trafficColor = root.getPropertyValue('--chart-traffic').trim() || '#6366f1';
+    if (els.charts.trafficViews) {
+      drawLineChart(els.charts.trafficViews, viewsSeries, {
+        color: trafficColor,
+        mode: 'bars',
+        emptyText: 'Refresh to collect traffic snapshots',
+        valueLabel: 'Views',
+        interactive: false
+      });
+    }
+    if (els.charts.trafficClones) {
+      drawLineChart(els.charts.trafficClones, clonesSeries, {
+        color: trafficColor,
+        mode: 'bars',
+        emptyText: 'Refresh to collect traffic snapshots',
+        valueLabel: 'Clones',
+        interactive: false
+      });
+    }
   }
 
   function renderMeta(data) {
@@ -629,11 +710,35 @@
   function renderDashboard(data) {
     lastDashboard = data;
     renderKpis(data.metrics);
+    renderTrafficKpis(data.metrics);
+    renderReferrers(data.series?.traffic);
     renderRepos(data.repos);
     renderCharts(data);
     renderHealth(data.health);
     renderMeta(data);
+    updateDemoBanner(data);
+    maybeShowOnboarding(data);
   }
+
+  function updateDemoBanner(data) {
+    const show = !!data.demoMode;
+    els.demoBanner?.classList.toggle('hidden', !show);
+    if (els.demoBanner) els.demoBanner.hidden = !show;
+  }
+
+  function maybeShowOnboarding(data) {
+    if (data.onboardingComplete || !els.onboardingOverlay) return;
+    els.onboardingOverlay.classList.remove('hidden');
+    els.onboardingOverlay.hidden = false;
+  }
+
+  function hideOnboarding() {
+    els.onboardingOverlay?.classList.add('hidden');
+    if (els.onboardingOverlay) els.onboardingOverlay.hidden = true;
+    window.ghStats?.completeOnboarding?.().catch(() => {});
+  }
+
+  window.__ghStatsRender = renderDashboard;
 
   async function loadTimings() {
     if (!window.ghStats?.getTimings) return;
@@ -827,6 +932,28 @@
     }
   }
 
+  els.btnOnboardingStart?.addEventListener('click', () => {
+    hideOnboarding();
+    if (!lastGhStatus?.authenticated) {
+      authLogin();
+    } else {
+      startFetch(false, 'Fetching your repos…');
+    }
+  });
+
+  els.btnOnboardingDismiss?.addEventListener('click', () => {
+    hideOnboarding();
+  });
+
+  els.btnDismissDemo?.addEventListener('click', async () => {
+    await window.ghStats?.dismissDemo?.();
+    if (!lastGhStatus?.authenticated) {
+      authLogin();
+    } else {
+      startFetch(false, 'Fetching your repos…');
+    }
+  });
+
   els.btnRefresh.addEventListener('click', () => {
     startFetch(false, 'Fetching stars, releases, and builds…');
   });
@@ -869,8 +996,10 @@
   setView('analytics', { persist: false });
 
   if (!window.ghStats) {
-    setAuthBadge('No bridge', 'error');
-    appendLog({ level: 'error', message: 'preload bridge missing', time: new Date().toISOString() });
+    if (!window.__ghStatsWebMode) {
+      setAuthBadge('No bridge', 'error');
+      appendLog({ level: 'error', message: 'preload bridge missing', time: new Date().toISOString() });
+    }
     return;
   }
 
