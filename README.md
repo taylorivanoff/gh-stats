@@ -15,11 +15,12 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 - Time ranges: **7d · 30d · 90d · All**
 - Charts: new stars per day, download deltas, cumulative stars, total downloads
 - Hover tooltips on delta charts showing which repos changed
+- **Health tab**: Attention / builds / releases to spot failed CI, missing assets, drafts, and missing publishes across many public repos
+- **Copy** buttons (panel + per-row) for pasteable triage notes
 - Per-repo table with stars, downloads, and 7d/30d star windows
 - Local snapshots + optional star-history cache (rate-limit aware)
 - Live fetch timer and rolling average timings
 - Toggleable debug log bar
-- Editable `gh repo list` query (org owner, visibility, limit, …)
 - Tray icon, splash screen, single-instance, window bounds persistence
 - Close hides to tray (Quit from tray menu)
 
@@ -67,11 +68,11 @@ Bump the `version` in `package.json` and push to `master` (or run `bun run bump`
 1. Sign in with `gh auth login` if you have not already
 2. Launch GhStats — it auto-fetches public repo totals on first run (and every 24h)
 3. Use the range tabs (**7d / 30d / 90d / All**) to change the chart window
-4. Click **Refresh** to re-pull current stars and release download totals
-5. Click **History** once to backfill star timelines via `gh api stargazers` (slow; rate-limit aware)
-6. Hover delta chart bars to see which repos contributed that day
-7. Click **Debug** to show or hide the log strip
-8. Edit the **gh** query bar to change which repos are listed (e.g. `repo list my-org --limit 200 --json nameWithOwner,stargazerCount`), then press Enter to save and refresh. **Reset** restores the default public-repo query.
+4. Click **Refresh** to re-pull stars, release download totals, latest releases, and recent Actions runs
+5. Open the **Health** tab for Attention / Recent builds / Recent releases; **Copy** (panel or row) for pasteable triage notes
+6. Click **History** once to backfill star timelines via `gh api stargazers` (slow; rate-limit aware)
+7. Hover delta chart bars to see which repos contributed that day
+8. Click **Debug** to show or hide the log strip
 
 Download charts need **multiple daily snapshots** before deltas appear. Star charts need a **History** fetch for day-by-day stargazer detail (snapshot totals still plot without it).
 
@@ -80,7 +81,8 @@ Download charts need **multiple daily snapshots** before deltas appear. Star cha
 | Metric | Source | Notes |
 | --- | --- | --- |
 | Current stars | Configurable `gh repo list … --json stargazerCount` | Default: public repos, limit 1000 |
-| Current downloads | `gh api repos/{repo}/releases` per repo | Summed asset `download_count` (same as `ghstats`) |
+| Current downloads | `gh api repos/{repo}/releases` per repo | Summed asset `download_count` + latest release metadata |
+| Latest builds | `gh api repos/{repo}/actions/runs` | Recent workflow conclusions for the Attention / Builds panels |
 | Star history | `gh api stargazers` with star timestamps | On-demand; paginated with delays |
 | Download trends | Local daily snapshots | Auto-refresh every 24h; deltas computed locally |
 

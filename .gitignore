@@ -9,5 +9,6 @@ Thumbs.db
 .release-staging/
 
 src-tauri/target/
+src-tauri/target-check/
 src-tauri/gen/
 

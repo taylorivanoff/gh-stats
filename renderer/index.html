@@ -19,6 +19,13 @@
         <button type="button" class="text-btn primary hidden" id="btn-auth-login" title="Sign in with GitHub CLI">Sign in</button>
       </div>
       <div class="titlebar-actions">
+        <div class="view-tabs" id="view-tabs" role="tablist" aria-label="Main view">
+          <button type="button" class="view-tab active" data-view="analytics" role="tab" aria-selected="true">Analytics</button>
+          <button type="button" class="view-tab" data-view="health" role="tab" aria-selected="false">
+            Health
+            <span class="view-tab-count hidden" id="health-tab-count"></span>
+          </button>
+        </div>
         <div class="range-tabs" id="range-tabs" role="tablist">
           <button type="button" class="range-tab" data-range="7">7d</button>
           <button type="button" class="range-tab active" data-range="30">30d</button>
@@ -40,60 +47,97 @@
     <aside class="log-panel hidden" id="log-panel" aria-label="Application log" hidden></aside>
 
     <div class="main-panels" id="main-panels">
-      <div class="dashboard-main">
-        <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
-        <section class="charts-grid" id="charts-grid">
-        <article class="chart-card">
-          <header class="chart-header">
-            <h2>New stars</h2>
-            <span class="chart-sub" id="stars-daily-sub"></span>
+      <div class="view-pane" id="view-analytics" data-view="analytics">
+        <div class="dashboard-main">
+          <section class="kpi-strip" id="kpi-grid" aria-label="Key metrics"></section>
+          <section class="charts-grid" id="charts-grid">
+            <article class="chart-card">
+              <header class="chart-header">
+                <h2>New stars</h2>
+                <span class="chart-sub" id="stars-daily-sub"></span>
+              </header>
+              <div class="chart-body"><canvas id="chart-stars-daily"></canvas></div>
+            </article>
+            <article class="chart-card">
+              <header class="chart-header">
+                <h2>Download deltas</h2>
+                <span class="chart-sub">Snapshots</span>
+              </header>
+              <div class="chart-body"><canvas id="chart-downloads-daily"></canvas></div>
+            </article>
+            <article class="chart-card">
+              <header class="chart-header">
+                <h2>Cumulative stars</h2>
+              </header>
+              <div class="chart-body"><canvas id="chart-stars-cumulative"></canvas></div>
+            </article>
+            <article class="chart-card">
+              <header class="chart-header">
+                <h2>Total downloads</h2>
+              </header>
+              <div class="chart-body"><canvas id="chart-downloads-total"></canvas></div>
+            </article>
+          </section>
+        </div>
+
+        <div class="splitter splitter-h" id="split-table" role="separator" aria-orientation="horizontal" aria-label="Resize repository table"></div>
+
+        <section class="table-section">
+          <header class="table-header">
+            <h2>Repositories</h2>
+            <span class="table-meta" id="repo-count"></span>
           </header>
-          <div class="chart-body"><canvas id="chart-stars-daily"></canvas></div>
-        </article>
-        <article class="chart-card">
-          <header class="chart-header">
-            <h2>Download deltas</h2>
-            <span class="chart-sub">Snapshots</span>
-          </header>
-          <div class="chart-body"><canvas id="chart-downloads-daily"></canvas></div>
-        </article>
-        <article class="chart-card">
-          <header class="chart-header">
-            <h2>Cumulative stars</h2>
-          </header>
-          <div class="chart-body"><canvas id="chart-stars-cumulative"></canvas></div>
-        </article>
-        <article class="chart-card">
-          <header class="chart-header">
-            <h2>Total downloads</h2>
-          </header>
-          <div class="chart-body"><canvas id="chart-downloads-total"></canvas></div>
-        </article>
+          <div class="table-wrap">
+            <table class="repo-table" id="repo-table">
+              <thead>
+                <tr>
+                  <th>Repository</th>
+                  <th class="num">Stars</th>
+                  <th class="num">Downloads</th>
+                  <th class="num">7d</th>
+                  <th class="num">30d</th>
+                </tr>
+              </thead>
+              <tbody id="repo-tbody"></tbody>
+            </table>
+          </div>
         </section>
       </div>
 
-      <div class="splitter splitter-h" id="split-table" role="separator" aria-orientation="horizontal" aria-label="Resize repository table"></div>
-
-      <section class="table-section">
-      <header class="table-header">
-        <h2>Repositories</h2>
-        <span class="table-meta" id="repo-count"></span>
-      </header>
-      <div class="table-wrap">
-        <table class="repo-table" id="repo-table">
-          <thead>
-            <tr>
-              <th>Repository</th>
-              <th class="num">Stars</th>
-              <th class="num">Downloads</th>
-              <th class="num">7d</th>
-              <th class="num">30d</th>
-            </tr>
-          </thead>
-          <tbody id="repo-tbody"></tbody>
-        </table>
+      <div class="view-pane hidden" id="view-health" data-view="health" hidden>
+        <section class="ops-section" id="ops-section" aria-label="Repo health">
+          <article class="ops-panel">
+            <header class="ops-header">
+              <h2>Attention</h2>
+              <div class="ops-actions">
+                <span class="ops-meta" id="issues-meta"></span>
+                <button type="button" class="text-btn compact" id="btn-copy-issues" title="Copy attention list">Copy</button>
+              </div>
+            </header>
+            <div class="ops-list" id="issues-list"></div>
+          </article>
+          <article class="ops-panel">
+            <header class="ops-header">
+              <h2>Recent builds</h2>
+              <div class="ops-actions">
+                <span class="ops-meta" id="builds-meta"></span>
+                <button type="button" class="text-btn compact" id="btn-copy-builds" title="Copy recent builds">Copy</button>
+              </div>
+            </header>
+            <div class="ops-list" id="builds-list"></div>
+          </article>
+          <article class="ops-panel">
+            <header class="ops-header">
+              <h2>Recent releases</h2>
+              <div class="ops-actions">
+                <span class="ops-meta" id="releases-meta"></span>
+                <button type="button" class="text-btn compact" id="btn-copy-releases" title="Copy recent releases">Copy</button>
+              </div>
+            </header>
+            <div class="ops-list" id="releases-list"></div>
+          </article>
+        </section>
       </div>
-      </section>
     </div>
   </div>
 

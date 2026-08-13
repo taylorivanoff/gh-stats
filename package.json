@@ -1,6 +1,6 @@
 {
   "name": "gh-stats",
-  "description": "Local GitHub stars and release download analytics for your public repos.",
+  "description": "Local GitHub stars, downloads, builds, and release health for your public repos.",
   "author": {
     "name": "Taylor Ivanoff"
   },

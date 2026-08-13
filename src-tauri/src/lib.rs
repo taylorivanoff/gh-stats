@@ -55,6 +55,7 @@ pub fn run() {
             defaults.insert("starHistoryLoaded".into(), json!(false));
             defaults.insert("showDebugBar".into(), json!(false));
             defaults.insert("layout".into(), json!({ "tableH": 140 }));
+            defaults.insert("activeView".into(), json!("analytics"));
             defaults.insert("timings".into(), json!([]));
             defaults.insert("lastFetchAt".into(), json!(null));
 

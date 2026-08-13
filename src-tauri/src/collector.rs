@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const RELEASE_DELAY_MS: u64 = 200;
 const STAR_PAGE_DELAY_MS: u64 = 150;
@@ -22,9 +22,66 @@ pub struct RepoTotals {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseInfo {
+    pub tag: String,
+    pub name: Option<String>,
+    pub published_at: Option<String>,
+    pub draft: bool,
+    pub prerelease: bool,
+    pub url: Option<String>,
+    pub asset_count: u64,
+    pub downloads: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunInfo {
+    pub id: u64,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub branch: Option<String>,
+    pub created_at: Option<String>,
+    pub url: Option<String>,
+    pub event: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoIssue {
+    pub kind: String,
+    pub severity: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoHealth {
+    pub name: String,
+    pub stars: u64,
+    pub downloads: u64,
+    pub latest_release: Option<ReleaseInfo>,
+    pub latest_run: Option<WorkflowRunInfo>,
+    pub recent_runs: Vec<WorkflowRunInfo>,
+    pub issues: Vec<RepoIssue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthSnapshot {
+    pub fetched_at: i64,
+    pub repos: Vec<RepoHealth>,
+    pub issues: Vec<Value>,
+    pub builds: Vec<Value>,
+    pub releases: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchTotals {
     pub repos: Vec<RepoTotals>,
     pub totals: Totals,
+    pub health: HealthSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -392,7 +449,40 @@ fn list_repos() -> Result<Vec<Value>, String> {
         .ok_or_else(|| "gh repo list did not return a JSON array".into())
 }
 
-fn release_download_total(repo: &str) -> u64 {
+fn parse_release_line(line: &str) -> Option<(u64, ReleaseInfo)> {
+    let v: Value = serde_json::from_str(line.trim()).ok()?;
+    let downloads = v.get("downloads").and_then(|x| x.as_u64()).unwrap_or(0);
+    let tag = v.get("tag").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    if tag.is_empty() {
+        return None;
+    }
+    Some((
+        downloads,
+        ReleaseInfo {
+            tag,
+            name: v
+                .get("name")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty()),
+            published_at: v
+                .get("publishedAt")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string()),
+            draft: v.get("draft").and_then(|x| x.as_bool()).unwrap_or(false),
+            prerelease: v.get("prerelease").and_then(|x| x.as_bool()).unwrap_or(false),
+            url: v
+                .get("url")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string()),
+            asset_count: v.get("assetCount").and_then(|x| x.as_u64()).unwrap_or(0),
+            downloads,
+        },
+    ))
+}
+
+/// Returns (total downloads across all releases, latest release if any).
+fn fetch_release_summary(repo: &str) -> (u64, Option<ReleaseInfo>) {
     let path = format!("repos/{repo}/releases");
     match run_gh(
         &[
@@ -400,16 +490,226 @@ fn release_download_total(repo: &str) -> u64 {
             &path,
             "--paginate",
             "--jq",
-            "[.[].assets[].download_count] | add // 0",
+            ".[] | {tag: .tag_name, name: .name, publishedAt: .published_at, draft: .draft, prerelease: .prerelease, url: .html_url, assetCount: (.assets | length), downloads: ([.assets[].download_count] | add // 0)}",
         ],
         60,
     ) {
-        Ok(stdout) => stdout
-            .lines()
-            .filter_map(|l| l.trim().parse::<u64>().ok())
-            .sum(),
-        Err(_) => 0,
+        Ok(stdout) => {
+            let mut total = 0u64;
+            let mut latest: Option<ReleaseInfo> = None;
+            for line in stdout.lines() {
+                if let Some((dl, info)) = parse_release_line(line) {
+                    total += dl;
+                    if latest.is_none() {
+                        latest = Some(info);
+                    }
+                }
+            }
+            (total, latest)
+        }
+        Err(_) => (0, None),
     }
+}
+
+fn parse_run_value(v: &Value) -> Option<WorkflowRunInfo> {
+    let id = v.get("id").and_then(|x| x.as_u64())?;
+    let name = v
+        .get("name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("workflow")
+        .to_string();
+    Some(WorkflowRunInfo {
+        id,
+        name,
+        status: v
+            .get("status")
+            .and_then(|x| x.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        conclusion: v
+            .get("conclusion")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty() && *s != "null")
+            .map(|s| s.to_string()),
+        branch: v
+            .get("branch")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        created_at: v
+            .get("createdAt")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        url: v
+            .get("url")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        event: v
+            .get("event")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+    })
+}
+
+fn fetch_recent_runs(repo: &str) -> Vec<WorkflowRunInfo> {
+    let path = format!("repos/{repo}/actions/runs?per_page=5");
+    match run_gh(
+        &[
+            "api",
+            &path,
+            "--jq",
+            "[.workflow_runs[:5][]? | {id, name, status, conclusion, branch: .head_branch, createdAt: .created_at, url: .html_url, event}]",
+        ],
+        45,
+    ) {
+        Ok(stdout) => {
+            let trimmed = stdout.trim();
+            if trimmed.is_empty() || trimmed == "null" {
+                return vec![];
+            }
+            match serde_json::from_str::<Value>(trimmed) {
+                Ok(Value::Array(arr)) => arr.iter().filter_map(parse_run_value).collect(),
+                _ => vec![],
+            }
+        }
+        Err(_) => vec![],
+    }
+}
+
+fn classify_issues(
+    latest_release: &Option<ReleaseInfo>,
+    recent_runs: &[WorkflowRunInfo],
+) -> Vec<RepoIssue> {
+    let mut issues = Vec::new();
+
+    match latest_release {
+        None => issues.push(RepoIssue {
+            kind: "no_release".into(),
+            severity: "warn".into(),
+            message: "No releases published".into(),
+        }),
+        Some(rel) if rel.draft => issues.push(RepoIssue {
+            kind: "draft_release".into(),
+            severity: "warn".into(),
+            message: format!("Latest release {} is still a draft", rel.tag),
+        }),
+        Some(rel) if rel.asset_count == 0 => issues.push(RepoIssue {
+            kind: "no_assets".into(),
+            severity: "error".into(),
+            message: format!("Latest release {} has no assets", rel.tag),
+        }),
+        _ => {}
+    }
+
+    if let Some(run) = recent_runs.first() {
+        let status = run.status.to_lowercase();
+        let conclusion = run
+            .conclusion
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase();
+        if status == "in_progress" || status == "queued" || status == "waiting" || status == "pending"
+        {
+            issues.push(RepoIssue {
+                kind: "ci_pending".into(),
+                severity: "info".into(),
+                message: format!("{} is {}", run.name, status),
+            });
+        } else if matches!(
+            conclusion.as_str(),
+            "failure" | "timed_out" | "cancelled" | "startup_failure" | "action_required"
+        ) {
+            issues.push(RepoIssue {
+                kind: "ci_failed".into(),
+                severity: "error".into(),
+                message: format!("{} ended with {}", run.name, conclusion),
+            });
+        }
+    }
+
+    issues
+}
+
+fn build_health_views(repos: &[RepoHealth]) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
+    let mut issues = Vec::new();
+    for repo in repos {
+        for issue in &repo.issues {
+            issues.push(json!({
+                "repo": repo.name,
+                "kind": issue.kind,
+                "severity": issue.severity,
+                "message": issue.message,
+                "releaseTag": repo.latest_release.as_ref().map(|r| r.tag.clone()),
+                "releaseUrl": repo.latest_release.as_ref().and_then(|r| r.url.clone()),
+                "runUrl": repo.latest_run.as_ref().and_then(|r| r.url.clone()),
+                "runName": repo.latest_run.as_ref().map(|r| r.name.clone()),
+                "runConclusion": repo.latest_run.as_ref().and_then(|r| r.conclusion.clone()),
+                "runStatus": repo.latest_run.as_ref().map(|r| r.status.clone()),
+            }));
+        }
+    }
+    issues.sort_by(|a, b| {
+        let sev = |v: &Value| match v.get("severity").and_then(|x| x.as_str()) {
+            Some("error") => 0,
+            Some("warn") => 1,
+            _ => 2,
+        };
+        sev(a).cmp(&sev(b)).then_with(|| {
+            a.get("repo")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .cmp(b.get("repo").and_then(|x| x.as_str()).unwrap_or(""))
+        })
+    });
+
+    let mut builds = Vec::new();
+    for repo in repos {
+        for run in &repo.recent_runs {
+            builds.push(json!({
+                "repo": repo.name,
+                "id": run.id,
+                "name": run.name,
+                "status": run.status,
+                "conclusion": run.conclusion,
+                "branch": run.branch,
+                "createdAt": run.created_at,
+                "url": run.url,
+                "event": run.event,
+            }));
+        }
+    }
+    builds.sort_by(|a, b| {
+        b.get("createdAt")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .cmp(a.get("createdAt").and_then(|x| x.as_str()).unwrap_or(""))
+    });
+    builds.truncate(40);
+
+    let mut releases = Vec::new();
+    for repo in repos {
+        if let Some(rel) = &repo.latest_release {
+            releases.push(json!({
+                "repo": repo.name,
+                "tag": rel.tag,
+                "name": rel.name,
+                "publishedAt": rel.published_at,
+                "draft": rel.draft,
+                "prerelease": rel.prerelease,
+                "url": rel.url,
+                "assetCount": rel.asset_count,
+                "downloads": rel.downloads,
+            }));
+        }
+    }
+    releases.sort_by(|a, b| {
+        b.get("publishedAt")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .cmp(a.get("publishedAt").and_then(|x| x.as_str()).unwrap_or(""))
+    });
+    releases.truncate(40);
+
+    (issues, builds, releases)
 }
 
 pub fn fetch_current_totals<F>(mut on_progress: F) -> Result<FetchTotals, String>
@@ -418,6 +718,7 @@ where
 {
     let repos = list_repos()?;
     let mut results = Vec::new();
+    let mut health_repos = Vec::new();
     let mut stars = 0u64;
     let mut downloads = 0u64;
     let total = repos.len();
@@ -432,7 +733,19 @@ where
             .get("stargazerCount")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let repo_downloads = release_download_total(&name);
+
+        on_progress(serde_json::json!({
+            "phase": "releases",
+            "current": i + 1,
+            "total": total,
+            "repo": name
+        }));
+
+        let (repo_downloads, latest_release) = fetch_release_summary(&name);
+        let recent_runs = fetch_recent_runs(&name);
+        let latest_run = recent_runs.first().cloned();
+        let issues = classify_issues(&latest_release, &recent_runs);
+
         stars += repo_stars;
         downloads += repo_downloads;
         results.push(RepoTotals {
@@ -440,12 +753,16 @@ where
             stars: repo_stars,
             downloads: repo_downloads,
         });
-        on_progress(serde_json::json!({
-            "phase": "releases",
-            "current": i + 1,
-            "total": total,
-            "repo": name
-        }));
+        health_repos.push(RepoHealth {
+            name: name.clone(),
+            stars: repo_stars,
+            downloads: repo_downloads,
+            latest_release,
+            latest_run,
+            recent_runs,
+            issues,
+        });
+
         if i + 1 < total {
             std::thread::sleep(Duration::from_millis(RELEASE_DELAY_MS));
         }
@@ -456,11 +773,50 @@ where
             .cmp(&a.downloads)
             .then_with(|| b.stars.cmp(&a.stars))
     });
+    health_repos.sort_by(|a, b| {
+        b.downloads
+            .cmp(&a.downloads)
+            .then_with(|| b.stars.cmp(&a.stars))
+    });
+
+    let (issues, builds, releases) = build_health_views(&health_repos);
+    let health = HealthSnapshot {
+        fetched_at: chrono::Utc::now().timestamp_millis(),
+        repos: health_repos,
+        issues,
+        builds,
+        releases,
+    };
 
     Ok(FetchTotals {
         repos: results,
         totals: Totals { stars, downloads },
+        health,
     })
+}
+
+pub fn health_path(user_data: &Path) -> PathBuf {
+    user_data.join("health-latest.json")
+}
+
+pub fn save_health(user_data: &Path, health: &HealthSnapshot) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(health).map_err(|e| e.to_string())?;
+    std::fs::write(health_path(user_data), text).map_err(|e| e.to_string())
+}
+
+pub fn load_health(user_data: &Path) -> Option<HealthSnapshot> {
+    let text = std::fs::read_to_string(health_path(user_data)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+pub fn empty_health() -> HealthSnapshot {
+    HealthSnapshot {
+        fetched_at: 0,
+        repos: vec![],
+        issues: vec![],
+        builds: vec![],
+        releases: vec![],
+    }
 }
 
 pub fn fetch_star_history<F>(repo: &str, mut on_progress: F) -> Result<StarHistory, String>

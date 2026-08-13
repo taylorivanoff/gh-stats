@@ -155,9 +155,9 @@ run({
   window: {
     html: path.join(__dirname, '..', 'renderer', 'index.html'),
     preload: path.join(__dirname, '..', 'preload', 'preload.js'),
-    minWidth: 720,
-    minHeight: 520,
-    defaultBounds: { width: 960, height: 680 }
+    minWidth: 980,
+    minHeight: 720,
+    defaultBounds: { width: 1120, height: 860 }
   },
   dev: { entryModule: module },
   updater: { enabled: app.isPackaged },

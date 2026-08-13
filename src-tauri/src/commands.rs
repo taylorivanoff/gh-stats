@@ -105,7 +105,7 @@ pub fn run_fetch_blocking(app: &AppHandle, include_star_history: bool) -> Value 
                 json!({
                     "phase": p.get("phase").cloned().unwrap_or(json!("releases")),
                     "message": format!(
-                        "Release downloads: {} ({}/{})",
+                        "Releases & builds: {} ({}/{})",
                         p.get("repo").and_then(|v| v.as_str()).unwrap_or(""),
                         p.get("current").and_then(|v| v.as_u64()).unwrap_or(0),
                         p.get("total").and_then(|v| v.as_u64()).unwrap_or(0)
@@ -123,6 +123,7 @@ pub fn run_fetch_blocking(app: &AppHandle, include_star_history: bool) -> Value 
             totals.repos.clone(),
             totals.totals.clone(),
         )?;
+        let _ = collector::save_health(&data, &totals.health);
 
         if include_star_history {
             emit(
@@ -188,7 +189,8 @@ pub fn run_fetch_blocking(app: &AppHandle, include_star_history: bool) -> Value 
         let snaps = store::load_all_snapshots(&data);
         let names: Vec<String> = totals.repos.iter().map(|r| r.name.clone()).collect();
         let histories = load_all_star_histories(&data, &names);
-        let dashboard = build_dashboard(&snaps, &histories, json!(30));
+        let health = collector::load_health(&data).unwrap_or_else(collector::empty_health);
+        let dashboard = build_dashboard(&snaps, &histories, json!(30), Some(&health));
         emit("dashboard:updated", dashboard);
 
         log.info(
@@ -288,7 +290,13 @@ pub async fn dashboard_get(app: AppHandle, range_days: Option<Value>) -> Value {
             .map(|s| s.repos.iter().map(|r| r.name.clone()).collect())
             .unwrap_or_default();
         let histories = load_all_star_histories(&data, &names);
-        build_dashboard(&snaps, &histories, range_days.unwrap_or(json!(30)))
+        let health = collector::load_health(&data);
+        build_dashboard(
+            &snaps,
+            &histories,
+            range_days.unwrap_or(json!(30)),
+            health.as_ref(),
+        )
     })
     .await
     .unwrap_or_else(|e| json!({ "error": e.to_string() }))

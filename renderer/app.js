@@ -17,6 +17,7 @@
   const { drawLineChart, formatNumber } = charts;
 
   let currentRange = 30;
+  let currentView = 'analytics';
   let lastDashboard = null;
   let timingStats = null;
   const logLines = [];
@@ -34,6 +35,7 @@
 
   let layout = { ...DEFAULT_LAYOUT };
   let saveLayoutTimer = null;
+  let copyFlashTimer = null;
 
   const els = {
     ghBadge: document.getElementById('gh-badge'),
@@ -52,7 +54,11 @@
     btnRefresh: document.getElementById('btn-refresh'),
     btnStarHistory: document.getElementById('btn-star-history'),
     starsDailySub: document.getElementById('stars-daily-sub'),
+    viewTabs: document.getElementById('view-tabs'),
     rangeTabs: document.getElementById('range-tabs'),
+    healthTabCount: document.getElementById('health-tab-count'),
+    viewAnalytics: document.getElementById('view-analytics'),
+    viewHealth: document.getElementById('view-health'),
     charts: {
       starsDaily: document.getElementById('chart-stars-daily'),
       downloadsDaily: document.getElementById('chart-downloads-daily'),
@@ -60,7 +66,16 @@
       downloadsTotal: document.getElementById('chart-downloads-total')
     },
     mainPanels: document.getElementById('main-panels'),
-    splitTable: document.getElementById('split-table')
+    splitTable: document.getElementById('split-table'),
+    issuesList: document.getElementById('issues-list'),
+    buildsList: document.getElementById('builds-list'),
+    releasesList: document.getElementById('releases-list'),
+    issuesMeta: document.getElementById('issues-meta'),
+    buildsMeta: document.getElementById('builds-meta'),
+    releasesMeta: document.getElementById('releases-meta'),
+    btnCopyIssues: document.getElementById('btn-copy-issues'),
+    btnCopyBuilds: document.getElementById('btn-copy-builds'),
+    btnCopyReleases: document.getElementById('btn-copy-releases')
   };
 
   let ghBusy = false;
@@ -79,6 +94,7 @@
       starsDaily: [], starsCumulative: [], downloadsDaily: [], downloadsTotal: []
     },
     repos: [],
+    health: { fetchedAt: null, issueCount: 0, issues: [], builds: [], releases: [] },
     meta: { snapshotCount: 0, hasStarHistory: false, lastSnapshotAt: null }
   };
 
@@ -102,7 +118,7 @@
     saveLayoutTimer = setTimeout(() => {
       saveLayoutTimer = null;
       if (window.ghStats?.setSettings) {
-        window.ghStats.setSettings({ layout }).catch(() => {});
+        window.ghStats.setSettings({ layout, activeView: currentView }).catch(() => {});
       }
     }, 200);
   }
@@ -146,6 +162,27 @@
       setSize: (h) => applyLayout({ ...layout, tableH: clamp(Math.round(h), 72, maxTableHeight()) }),
       invert: true
     });
+  }
+
+  function setView(view, { persist = true } = {}) {
+    currentView = view === 'health' ? 'health' : 'analytics';
+    const isHealth = currentView === 'health';
+    els.viewAnalytics?.classList.toggle('hidden', isHealth);
+    els.viewHealth?.classList.toggle('hidden', !isHealth);
+    if (els.viewAnalytics) els.viewAnalytics.hidden = isHealth;
+    if (els.viewHealth) els.viewHealth.hidden = !isHealth;
+    els.rangeTabs?.classList.toggle('is-hidden', isHealth);
+    els.viewTabs?.querySelectorAll('.view-tab').forEach((btn) => {
+      const active = btn.dataset.view === currentView;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (!isHealth && lastDashboard) {
+      requestAnimationFrame(() => renderCharts(lastDashboard));
+    }
+    if (persist) {
+      window.ghStats?.setSettings?.({ activeView: currentView }).catch(() => {});
+    }
   }
 
   function formatDuration(ms) {
@@ -339,6 +376,184 @@
     return parts.join(' · ');
   }
 
+  function shortIso(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
+    return d.toISOString().slice(0, 16).replace('T', ' ');
+  }
+
+  function runBadge(run) {
+    const status = String(run?.status || '').toLowerCase();
+    const conclusion = String(run?.conclusion || '').toLowerCase();
+    if (status === 'in_progress' || status === 'queued' || status === 'waiting' || status === 'pending') {
+      return { label: status, cls: 'info' };
+    }
+    if (conclusion === 'success') return { label: 'success', cls: 'ok' };
+    if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'cancelled' || conclusion === 'startup_failure') {
+      return { label: conclusion, cls: 'error' };
+    }
+    if (conclusion) return { label: conclusion, cls: 'warn' };
+    return { label: status || 'unknown', cls: 'info' };
+  }
+
+  function issueBadge(issue) {
+    const sev = String(issue?.severity || 'info');
+    const kind = String(issue?.kind || 'issue').replace(/_/g, ' ');
+    return { label: kind, cls: sev === 'error' || sev === 'warn' || sev === 'info' ? sev : 'info' };
+  }
+
+  async function copyText(text, btn) {
+    const value = String(text || '').trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      if (btn) {
+        const prev = btn.textContent;
+        btn.textContent = 'Copied';
+        if (copyFlashTimer) clearTimeout(copyFlashTimer);
+        copyFlashTimer = setTimeout(() => {
+          btn.textContent = prev;
+        }, 1200);
+      }
+    } catch (err) {
+      appendLog({ level: 'error', message: `copy failed: ${err.message}`, time: new Date().toISOString() });
+    }
+  }
+
+  function formatIssuesCopy(issues) {
+    if (!issues?.length) return 'No attention items.';
+    const lines = ['GhStats — Attention', `Generated ${new Date().toISOString()}`, ''];
+    for (const issue of issues) {
+      const link = issue.runUrl || issue.releaseUrl || `https://github.com/${issue.repo}`;
+      lines.push(`- [${issue.severity}] ${issue.repo}: ${issue.message}`);
+      lines.push(`  ${link}`);
+    }
+    return lines.join('\n');
+  }
+
+  function formatBuildsCopy(builds) {
+    if (!builds?.length) return 'No recent builds.';
+    const lines = ['GhStats — Recent builds', `Generated ${new Date().toISOString()}`, ''];
+    for (const run of builds) {
+      const badge = runBadge(run);
+      lines.push(`- ${run.repo} · ${run.name} · ${badge.label}${run.branch ? ` · ${run.branch}` : ''}`);
+      if (run.url) lines.push(`  ${run.url}`);
+    }
+    return lines.join('\n');
+  }
+
+  function formatReleasesCopy(releases) {
+    if (!releases?.length) return 'No recent releases.';
+    const lines = ['GhStats — Recent releases', `Generated ${new Date().toISOString()}`, ''];
+    for (const rel of releases) {
+      const flags = [
+        rel.draft ? 'draft' : null,
+        rel.prerelease ? 'pre' : null,
+        Number(rel.assetCount) === 0 ? 'no-assets' : null
+      ].filter(Boolean).join(', ');
+      lines.push(`- ${rel.repo} · ${rel.tag}${flags ? ` (${flags})` : ''} · ${formatNumber(rel.downloads || 0)} dl`);
+      if (rel.url) lines.push(`  ${rel.url}`);
+    }
+    return lines.join('\n');
+  }
+
+  function rowCopyButton(text) {
+    return `<button type="button" class="ops-copy-one" data-copy="${encodeURIComponent(text)}" title="Copy row">Copy</button>`;
+  }
+
+  function renderHealth(health) {
+    const data = health || EMPTY_DASHBOARD.health;
+    const issues = data.issues || [];
+    const builds = data.builds || [];
+    const releases = data.releases || [];
+
+    if (els.healthTabCount) {
+      const count = issues.length;
+      els.healthTabCount.textContent = String(count);
+      els.healthTabCount.classList.toggle('hidden', count === 0);
+      els.healthTabCount.title = count ? `${count} items need attention` : '';
+    }
+
+    els.issuesMeta.textContent = issues.length ? `${issues.length}` : 'Clear';
+    els.buildsMeta.textContent = builds.length ? `${builds.length}` : '—';
+    els.releasesMeta.textContent = releases.length ? `${releases.length}` : '—';
+
+    if (!issues.length) {
+      els.issuesList.innerHTML = `<div class="ops-empty">${data.fetchedAt ? 'No open issues across listed repos' : 'Refresh to scan builds & releases'}</div>`;
+    } else {
+      els.issuesList.innerHTML = issues.map((issue) => {
+        const badge = issueBadge(issue);
+        const href = issue.runUrl || issue.releaseUrl || `https://github.com/${issue.repo}`;
+        const line = `${issue.repo}: ${issue.message}${href ? `\n${href}` : ''}`;
+        return `
+          <div class="ops-row">
+            <div class="ops-row-main">
+              <div class="ops-row-top">
+                <a class="ops-repo" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(issue.repo)}</a>
+                <span class="ops-badge ${badge.cls}">${escapeHtml(badge.label)}</span>
+              </div>
+              <div class="ops-msg" title="${escapeHtml(issue.message)}">${escapeHtml(issue.message)}</div>
+            </div>
+            ${rowCopyButton(line)}
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (!builds.length) {
+      els.buildsList.innerHTML = `<div class="ops-empty">${data.fetchedAt ? 'No workflow runs found' : 'Refresh to load builds'}</div>`;
+    } else {
+      els.buildsList.innerHTML = builds.map((run) => {
+        const badge = runBadge(run);
+        const when = shortIso(run.createdAt);
+        const detail = [run.name, run.branch, when].filter(Boolean).join(' · ');
+        const href = run.url || `https://github.com/${run.repo}/actions`;
+        const line = `${run.repo} · ${run.name} · ${badge.label}${run.branch ? ` · ${run.branch}` : ''}${href ? `\n${href}` : ''}`;
+        return `
+          <div class="ops-row">
+            <div class="ops-row-main">
+              <div class="ops-row-top">
+                <a class="ops-repo" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(run.repo)}</a>
+                <span class="ops-badge ${badge.cls}">${escapeHtml(badge.label)}</span>
+              </div>
+              <div class="ops-msg" title="${escapeHtml(detail)}">${escapeHtml(detail)}</div>
+            </div>
+            ${rowCopyButton(line)}
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (!releases.length) {
+      els.releasesList.innerHTML = `<div class="ops-empty">${data.fetchedAt ? 'No releases published' : 'Refresh to load releases'}</div>`;
+    } else {
+      els.releasesList.innerHTML = releases.map((rel) => {
+        const flags = [];
+        if (rel.draft) flags.push('draft');
+        if (rel.prerelease) flags.push('pre');
+        if (Number(rel.assetCount) === 0) flags.push('no assets');
+        const badgeCls = rel.draft || Number(rel.assetCount) === 0 ? 'error' : (rel.prerelease ? 'warn' : 'ok');
+        const badgeLabel = flags[0] || 'release';
+        const detail = [rel.tag, shortIso(rel.publishedAt), `${formatNumber(rel.downloads || 0)} dl`].filter(Boolean).join(' · ');
+        const href = rel.url || `https://github.com/${rel.repo}/releases`;
+        const line = `${rel.repo} · ${rel.tag}${flags.length ? ` (${flags.join(', ')})` : ''} · ${formatNumber(rel.downloads || 0)} dl${href ? `\n${href}` : ''}`;
+        return `
+          <div class="ops-row">
+            <div class="ops-row-main">
+              <div class="ops-row-top">
+                <a class="ops-repo" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(rel.repo)}</a>
+                <span class="ops-badge ${badgeCls}">${escapeHtml(badgeLabel)}</span>
+              </div>
+              <div class="ops-msg" title="${escapeHtml(detail)}">${escapeHtml(detail)}</div>
+            </div>
+            ${rowCopyButton(line)}
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
   function renderKpis(metrics) {
     const cards = [
       { label: 'Total stars', value: metrics.totalStars },
@@ -404,7 +619,9 @@
 
   function renderMeta(data) {
     const timing = timingSummary();
-    const base = `${formatRelative(data.meta.lastSnapshotAt)} · ${data.meta.snapshotCount} snaps`;
+    const issues = data.health?.issueCount || 0;
+    const healthBit = issues ? `${issues} attention` : 'health ok';
+    const base = `${formatRelative(data.meta.lastSnapshotAt)} · ${data.meta.snapshotCount} snaps · ${healthBit}`;
     els.lastUpdated.textContent = timing ? `${base} · ${timing}` : base;
     els.lastUpdated.title = timing || base;
   }
@@ -414,6 +631,7 @@
     renderKpis(data.metrics);
     renderRepos(data.repos);
     renderCharts(data);
+    renderHealth(data.health);
     renderMeta(data);
   }
 
@@ -523,6 +741,34 @@
     toggleDebugBar();
   });
 
+  els.btnCopyIssues?.addEventListener('click', () => {
+    copyText(formatIssuesCopy(lastDashboard?.health?.issues), els.btnCopyIssues);
+  });
+  els.btnCopyBuilds?.addEventListener('click', () => {
+    copyText(formatBuildsCopy(lastDashboard?.health?.builds), els.btnCopyBuilds);
+  });
+  els.btnCopyReleases?.addEventListener('click', () => {
+    copyText(formatReleasesCopy(lastDashboard?.health?.releases), els.btnCopyReleases);
+  });
+
+  function bindOpsListCopy(listEl) {
+    listEl?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-copy]');
+      if (!btn) return;
+      e.preventDefault();
+      let decoded = '';
+      try {
+        decoded = decodeURIComponent(btn.getAttribute('data-copy') || '');
+      } catch (_) {
+        decoded = btn.getAttribute('data-copy') || '';
+      }
+      copyText(decoded, btn);
+    });
+  }
+  bindOpsListCopy(els.issuesList);
+  bindOpsListCopy(els.buildsList);
+  bindOpsListCopy(els.releasesList);
+
   els.btnInstallGh?.addEventListener('click', () => {
     installGh();
   });
@@ -551,6 +797,12 @@
     loadDashboard();
   });
 
+  els.viewTabs?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.view-tab');
+    if (!btn?.dataset.view) return;
+    setView(btn.dataset.view);
+  });
+
   function showFetchError(message) {
     stopTimer();
     timerMode = null;
@@ -576,7 +828,7 @@
   }
 
   els.btnRefresh.addEventListener('click', () => {
-    startFetch(false, 'Fetching stars and downloads…');
+    startFetch(false, 'Fetching stars, releases, and builds…');
   });
 
   els.btnStarHistory.addEventListener('click', () => {
@@ -607,13 +859,14 @@
   }
 
   const resizeObserver = new ResizeObserver(() => {
-    if (lastDashboard) renderCharts(lastDashboard);
+    if (currentView === 'analytics' && lastDashboard) renderCharts(lastDashboard);
   });
   document.querySelectorAll('.chart-body').forEach((el) => resizeObserver.observe(el));
 
   // Show empty UI immediately, then connect to main process.
   renderDashboard(EMPTY_DASHBOARD);
   initSplitters();
+  setView('analytics', { persist: false });
 
   if (!window.ghStats) {
     setAuthBadge('No bridge', 'error');
@@ -628,6 +881,7 @@
         const settings = await window.ghStats.getSettings();
         applyDebugBar(!!settings.showDebugBar);
         if (settings.layout) applyLayout(settings.layout);
+        if (settings.activeView) setView(settings.activeView, { persist: false });
       } catch (_) {
         applyDebugBar(false);
       }

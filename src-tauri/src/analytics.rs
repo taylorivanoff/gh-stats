@@ -1,6 +1,6 @@
 use serde_json::{json, Map, Value};
 
-use crate::collector::date_key;
+use crate::collector::{date_key, HealthSnapshot};
 use crate::store::Snapshot;
 
 fn days_ago(n: i64) -> String {
@@ -63,20 +63,72 @@ fn fill_carry_forward(points: &[(String, u64)], start: &str, end: &str) -> Vec<V
         .collect()
 }
 
-fn fill_daily_zeros(points: &[(String, u64)], start: &str, end: &str) -> Vec<Value> {
+struct DailyPoint {
+    date: String,
+    value: u64,
+    repos: Vec<Value>,
+}
+
+fn fill_daily_zeros(points: &[DailyPoint], start: &str, end: &str) -> Vec<Value> {
     if points.is_empty() {
         return vec![];
     }
-    let by_date: std::collections::HashMap<_, _> =
-        points.iter().map(|(d, v)| (d.clone(), *v)).collect();
-    let first = points[0].0.clone();
+    let by_date: std::collections::HashMap<_, _> = points
+        .iter()
+        .map(|p| (p.date.clone(), p))
+        .collect();
+    let first = points[0].date.clone();
     each_day(start, end)
         .into_iter()
         .filter(|d| d.as_str() >= first.as_str())
         .map(|day| {
-            let value = by_date.get(&day).copied().unwrap_or(0);
-            json!({ "date": day, "value": value, "repos": [] })
+            if let Some(hit) = by_date.get(&day) {
+                json!({
+                    "date": day,
+                    "value": hit.value,
+                    "repos": hit.repos.clone()
+                })
+            } else {
+                json!({ "date": day, "value": 0, "repos": [] })
+            }
         })
+        .collect()
+}
+
+fn repo_field_deltas(prev: &Snapshot, cur: &Snapshot, field: &str) -> Vec<Value> {
+    let mut prev_map = std::collections::HashMap::new();
+    for r in &prev.repos {
+        prev_map.insert(
+            r.name.clone(),
+            if field == "stars" { r.stars } else { r.downloads },
+        );
+    }
+    let mut cur_map = std::collections::HashMap::new();
+    for r in &cur.repos {
+        cur_map.insert(
+            r.name.clone(),
+            if field == "stars" { r.stars } else { r.downloads },
+        );
+    }
+    let mut names: std::collections::HashSet<_> = prev_map.keys().cloned().collect();
+    names.extend(cur_map.keys().cloned());
+    let mut changes: Vec<(String, i64)> = names
+        .into_iter()
+        .filter_map(|name| {
+            let a = prev_map.get(&name).copied().unwrap_or(0) as i64;
+            let b = cur_map.get(&name).copied().unwrap_or(0) as i64;
+            let delta = b - a;
+            if delta != 0 {
+                Some((name, delta))
+            } else {
+                None
+            }
+        })
+        .collect();
+    changes.sort_by(|a, b| b.1.abs().cmp(&a.1.abs()));
+    changes
+        .into_iter()
+        .map(|(name, delta)| json!({ "name": name, "delta": delta }))
         .collect()
 }
 
@@ -108,7 +160,7 @@ fn snapshot_field_points(snapshots: &[Snapshot], field: &str, start: &str, end: 
         .collect()
 }
 
-fn snapshot_delta_points(snapshots: &[Snapshot], field: &str, start: &str, end: &str) -> Vec<(String, u64)> {
+fn snapshot_delta_points(snapshots: &[Snapshot], field: &str, start: &str, end: &str) -> Vec<DailyPoint> {
     let in_range: Vec<_> = snapshots
         .iter()
         .filter(|s| s.date.as_str() >= start && s.date.as_str() <= end)
@@ -151,7 +203,21 @@ fn snapshot_delta_points(snapshots: &[Snapshot], field: &str, start: &str, end: 
         } else {
             cur_total.saturating_sub(prev_total)
         };
-        out.push((cur.date.clone(), delta));
+        let repos = if no_baseline {
+            vec![]
+        } else if let Some(p) = prev {
+            repo_field_deltas(p, cur, field)
+                .into_iter()
+                .filter(|r| r.get("delta").and_then(|d| d.as_i64()).unwrap_or(0) > 0)
+                .collect()
+        } else {
+            vec![]
+        };
+        out.push(DailyPoint {
+            date: cur.date.clone(),
+            value: delta,
+            repos,
+        });
     }
     out
 }
@@ -160,24 +226,62 @@ fn star_history_daily_points(
     histories: &Map<String, Value>,
     start: &str,
     end: &str,
-) -> Vec<(String, u64)> {
-    let mut by_day: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
-    for hist in histories.values() {
+) -> Vec<DailyPoint> {
+    let mut by_day: std::collections::BTreeMap<String, (u64, std::collections::HashMap<String, u64>)> =
+        std::collections::BTreeMap::new();
+    for (repo, hist) in histories {
         if let Some(daily) = hist.get("daily").and_then(|d| d.as_object()) {
             for (day, count) in daily {
                 if day.as_str() >= start && day.as_str() <= end {
-                    *by_day.entry(day.clone()).or_insert(0) += count.as_u64().unwrap_or(0);
+                    let n = count.as_u64().unwrap_or(0);
+                    let entry = by_day.entry(day.clone()).or_insert_with(|| (0, std::collections::HashMap::new()));
+                    entry.0 += n;
+                    *entry.1.entry(repo.clone()).or_insert(0) += n;
                 }
             }
         }
     }
-    by_day.into_iter().collect()
+    by_day
+        .into_iter()
+        .map(|(date, (value, repos_map))| {
+            let mut repos: Vec<(String, u64)> = repos_map.into_iter().collect();
+            repos.sort_by(|a, b| b.1.cmp(&a.1));
+            DailyPoint {
+                date,
+                value,
+                repos: repos
+                    .into_iter()
+                    .map(|(name, delta)| json!({ "name": name, "delta": delta }))
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+fn health_payload(health: Option<&HealthSnapshot>) -> Value {
+    match health {
+        Some(h) if h.fetched_at > 0 => json!({
+            "fetchedAt": h.fetched_at,
+            "issueCount": h.issues.len(),
+            "issues": h.issues,
+            "builds": h.builds,
+            "releases": h.releases,
+        }),
+        _ => json!({
+            "fetchedAt": null,
+            "issueCount": 0,
+            "issues": [],
+            "builds": [],
+            "releases": [],
+        }),
+    }
 }
 
 pub fn build_dashboard(
     snapshots: &[Snapshot],
     star_histories: &Map<String, Value>,
     range_days: Value,
+    health: Option<&HealthSnapshot>,
 ) -> Value {
     let today = date_key();
     let mut sorted = snapshots.to_vec();
@@ -328,6 +432,7 @@ pub fn build_dashboard(
             )
         },
         "repos": repos,
+        "health": health_payload(health),
         "meta": {
             "snapshotCount": sorted.len(),
             "hasStarHistory": has_star_history,
