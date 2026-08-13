@@ -1,6 +1,6 @@
 [package]
 name = "gh-stats"
-version = "1.0.6"
+version = "1.0.7"
 description = "Local GitHub stars and release download analytics"
 authors = ["Taylor Ivanoff"]
 edition = "2021"
