@@ -464,9 +464,10 @@ pub fn seed_demo(app: AppHandle) -> Value {
 #[tauri::command]
 pub fn complete_onboarding(app: AppHandle) -> Value {
     let data = user_data(&app);
-    let mut settings = load_settings(&data);
+    let tray_state = app.state::<TrayBaseState>();
+    let mut settings = sync_settings_from_tray(&data, &tray_state);
     settings.onboarding_complete = true;
-    let _ = save_settings(&data, &settings);
+    persist_settings(&data, &settings, &tray_state);
     json!({ "ok": true })
 }
 

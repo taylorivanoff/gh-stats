@@ -26,7 +26,6 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 ### Platform
 - **Desktop app** (Tauri 2): Windows, macOS, Linux - tray icon, auto-fetch, updater
 - **CLI** (`gh-stats`): fetch, history, status, export, serve
-- **GitHub Action**: daily snapshot collection to `.gh-stats/`
 - **Web export**: static dashboard for GitHub Pages
 
 ### Onboarding
@@ -110,21 +109,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details.
 | Star history | `gh api stargazers` | On-demand or auto backfill |
 
 Logs: `%APPDATA%/gh-stats/logs/` (Windows), `~/Library/Application Support/gh-stats/` (macOS), `~/.local/share/gh-stats/` (Linux).
-
-## GitHub Action
-
-Daily snapshots are collected by [`.github/workflows/collect.yml`](.github/workflows/collect.yml), which runs the local action at [`action/`](action/).
-
-```yaml
-- uses: taylorivanoff/gh-stats/action@master
-  with:
-    visibility: public
-    commit-snapshots: 'true'
-    include-traffic: 'true'
-    github-token: ${{ secrets.GH_STATS_TOKEN }}
-```
-
-`GITHUB_TOKEN` only sees the current repository. Use a PAT (`GH_STATS_TOKEN`) with `repo` scope to collect your full public (or private) portfolio and traffic.
 
 ## Keywords
 

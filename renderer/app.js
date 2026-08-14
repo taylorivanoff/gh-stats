@@ -726,15 +726,26 @@
     if (els.demoBanner) els.demoBanner.hidden = !show;
   }
 
+  function setOnboardingVisible(show) {
+    if (!els.onboardingOverlay) return;
+    els.onboardingOverlay.classList.toggle('hidden', !show);
+    els.onboardingOverlay.hidden = !show;
+  }
+
   function maybeShowOnboarding(data) {
-    if (data.onboardingComplete || !els.onboardingOverlay) return;
-    els.onboardingOverlay.classList.remove('hidden');
-    els.onboardingOverlay.hidden = false;
+    if (!els.onboardingOverlay) return;
+    // Hide once complete; never open from the empty bootstrap payload.
+    if (data.onboardingComplete) {
+      setOnboardingVisible(false);
+      return;
+    }
+    if (data === EMPTY_DASHBOARD) return;
+    setOnboardingVisible(true);
   }
 
   function hideOnboarding() {
-    els.onboardingOverlay?.classList.add('hidden');
-    if (els.onboardingOverlay) els.onboardingOverlay.hidden = true;
+    if (lastDashboard) lastDashboard.onboardingComplete = true;
+    setOnboardingVisible(false);
     window.ghStats?.completeOnboarding?.().catch(() => {});
   }
 

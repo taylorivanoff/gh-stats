@@ -37,7 +37,7 @@ jobs:
               *.js|*.mjs|*.cjs|*.rs|*.html|*.css)
                 return 0
                 ;;
-              src-tauri/*|renderer/*|sidecar/*|crates/*|action/*|packaging/*|extensions/*)
+              src-tauri/*|renderer/*|sidecar/*|crates/*|packaging/*|extensions/*)
                 return 0
                 ;;
             esac
