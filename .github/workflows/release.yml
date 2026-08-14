@@ -169,7 +169,7 @@ EOF
           args: ${{ matrix.args }}
       - name: Build CLI binary
         working-directory: app
-        run: cargo build --release --bin gh-stats-cli
+        run: cargo build --release -p gh-stats-cli
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:

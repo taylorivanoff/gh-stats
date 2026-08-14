@@ -11,10 +11,6 @@ default-run = "gh-stats"
 name = "gh_stats_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[[bin]]
-name = "gh-stats-cli"
-path = "src/bin/gh-stats-cli.rs"
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -30,4 +26,3 @@ serde_json = "1"
 parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 which = "7"
-tiny_http = "0.12"

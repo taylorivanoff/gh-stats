@@ -1,0 +1,72 @@
+name: Collect GhStats
+description: Fetch GitHub portfolio snapshots into .gh-stats/ (stars, downloads, optional traffic).
+author: Taylor Ivanoff
+branding:
+  icon: bar-chart
+  color: blue
+
+inputs:
+  visibility:
+    description: Repo visibility to collect (public, private, or all)
+    required: false
+    default: public
+  commit-snapshots:
+    description: Commit .gh-stats/ back to the repository
+    required: false
+    default: 'true'
+  include-traffic:
+    description: Collect GitHub traffic (views/clones). Requires push access to each repo.
+    required: false
+    default: 'true'
+  github-token:
+    description: Token for the gh CLI. Use a PAT to list all your repos; GITHUB_TOKEN only sees this repository.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: ${{ github.action_path }}/..
+
+    - name: Build gh-stats-cli
+      shell: bash
+      working-directory: ${{ github.action_path }}/..
+      run: cargo build --release -p gh-stats-cli
+
+    - name: Collect snapshots
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_STATS_DATA: ${{ github.workspace }}/.gh-stats
+        VISIBILITY: ${{ inputs.visibility }}
+        INCLUDE_TRAFFIC: ${{ inputs.include-traffic }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$GH_STATS_DATA"
+        extra=()
+        if [ "$INCLUDE_TRAFFIC" != "true" ]; then
+          extra+=(--no-traffic)
+        fi
+        "${GITHUB_ACTION_PATH}/../target/release/gh-stats-cli" fetch --visibility "$VISIBILITY" "${extra[@]}"
+
+    - name: Commit snapshots
+      if: inputs.commit-snapshots == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -f .gh-stats
+        if git diff --cached --quiet; then
+          echo "No snapshot changes"
+          exit 0
+        fi
+        git commit -m "chore: collect GhStats snapshot $(date -u +%Y-%m-%d)"
+        git push

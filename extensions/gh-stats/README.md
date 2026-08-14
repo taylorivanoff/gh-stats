@@ -22,4 +22,4 @@ gh stats export --format csv --output repos.csv
 gh stats serve --port 3847
 ```
 
-Requires the `gh-stats-cli` binary on PATH or built locally (`cargo build --release --bin gh-stats-cli`).
+Requires the `gh-stats-cli` binary on PATH or built locally (`cargo build --release -p gh-stats-cli`).

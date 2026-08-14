@@ -18,3 +18,4 @@ jobs:
           visibility: public
           commit-snapshots: 'true'
           include-traffic: 'true'
+          github-token: ${{ secrets.GH_STATS_TOKEN || github.token }}

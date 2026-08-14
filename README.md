@@ -63,7 +63,7 @@ curl -fsSL -o gh-stats https://github.com/taylorivanoff/gh-stats/releases/latest
 chmod +x gh-stats && sudo mv gh-stats /usr/local/bin/
 
 # Or build from source
-cargo build --release --bin gh-stats-cli
+cargo build --release -p gh-stats-cli
 ```
 
 ### gh CLI extension
@@ -84,7 +84,7 @@ Requires [tauri-tray-base](https://github.com/taylorivanoff/tauri-tray-base) che
 
 ```bash
 bun run release    # Build desktop installers
-cargo run --bin gh-stats-cli -- status   # CLI
+cargo run -p gh-stats-cli -- status   # CLI
 bun run lint
 ```
 
@@ -111,6 +111,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details.
 
 Logs: `%APPDATA%/gh-stats/logs/` (Windows), `~/Library/Application Support/gh-stats/` (macOS), `~/.local/share/gh-stats/` (Linux).
 
+## GitHub Action
+
+Daily snapshots are collected by [`.github/workflows/collect.yml`](.github/workflows/collect.yml), which runs the local action at [`action/`](action/).
+
+```yaml
+- uses: taylorivanoff/gh-stats/action@master
+  with:
+    visibility: public
+    commit-snapshots: 'true'
+    include-traffic: 'true'
+    github-token: ${{ secrets.GH_STATS_TOKEN }}
+```
+
+`GITHUB_TOKEN` only sees the current repository. Use a PAT (`GH_STATS_TOKEN`) with `repo` scope to collect your full public (or private) portfolio and traffic.
 
 ## Keywords
 
