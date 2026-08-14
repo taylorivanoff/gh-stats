@@ -55,6 +55,7 @@ pub fn run() {
         .setup(move |app| {
             let mut defaults = HashMap::new();
             defaults.insert("autoFetchHours".into(), json!(24));
+            defaults.insert("opacity".into(), json!(1.0));
             defaults.insert("starHistoryLoaded".into(), json!(false));
             defaults.insert("showDebugBar".into(), json!(false));
             defaults.insert("layout".into(), json!({ "tableH": 140 }));
@@ -82,6 +83,7 @@ pub fn run() {
 
             setup_tray(app.handle(), TraySetupOptions::default())?;
             apply_window_settings(app.handle());
+            tauri_tray_base::enable_frameless_chrome(app.handle());
             sync_autostart(app.handle());
 
             let data_dir = user_data(app.handle());

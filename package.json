@@ -16,12 +16,19 @@
     "bump": "node scripts/bump-version.cjs",
     "icon": "node scripts/run-tauri.cjs icon resources/icon.png",
     "lint": "eslint renderer scripts",
-    "lint:fix": "eslint renderer scripts --fix"
+    "lint:fix": "eslint renderer scripts --fix",
+    "postinstall": "node scripts/sync-shared-styles.cjs",
+    "sync:styles": "node scripts/sync-shared-styles.cjs",
+    "predev": "node scripts/sync-shared-styles.cjs",
+    "prebuild": "node scripts/sync-shared-styles.cjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "eslint": "^9.39.5",
     "@eslint/js": "^9.39.5",
     "globals": "^16.0.0"
+  },
+  "dependencies": {
+    "@taylorivanoff/shared-styles": "file:../shared-styles"
   }
 }
