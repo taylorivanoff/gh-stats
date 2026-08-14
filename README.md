@@ -1,4 +1,4 @@
-# GhStats - GitHub Stars & Downloads Analytics
+# GhStats - GitHub Repo Analytics Visualiser
 
 [![Release](https://img.shields.io/github/v/release/taylorivanoff/gh-stats)](https://github.com/taylorivanoff/gh-stats/releases)
 [![Downloads](https://img.shields.io/github/downloads/taylorivanoff/gh-stats/total)](https://github.com/taylorivanoff/gh-stats/releases)
