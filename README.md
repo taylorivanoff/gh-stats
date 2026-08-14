@@ -10,6 +10,8 @@
 
 Ideal for indie developers who want a lightweight **Google Analytics–style view** of GitHub engagement without shipping data to a third party.
 
+<img width="1122" height="892" alt="image" src="https://github.com/user-attachments/assets/f45e566e-b20b-4528-a9ee-bd2865a221dd" />
+
 ## Features
 
 ### Analytics
@@ -22,16 +24,6 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 ### Health triage
 - Attention panel: failed CI, missing assets, draft releases, no releases
 - Recent builds and releases with copy-paste triage notes
-
-### Platform
-- **Desktop app** (Tauri 2): Windows, macOS, Linux - tray icon, auto-fetch, updater
-- **CLI** (`gh-stats`): fetch, history, status, export, serve
-- **Web export**: static dashboard for GitHub Pages
-
-### Onboarding
-- Demo data on first launch so charts render immediately
-- Auto star-history backfill in the background after first fetch
-- First-run wizard
 
 ## Requirements
 
@@ -53,24 +45,6 @@ Ideal for indie developers who want a lightweight **Google Analytics–style vie
 
 1. Download `.AppImage` or `.deb` from [Releases](https://github.com/taylorivanoff/gh-stats/releases)
 2. Install `gh` via your package manager
-
-### CLI only
-
-```bash
-# From releases (Linux x86_64)
-curl -fsSL -o gh-stats https://github.com/taylorivanoff/gh-stats/releases/latest/download/gh-stats-linux-x86_64
-chmod +x gh-stats && sudo mv gh-stats /usr/local/bin/
-
-# Or build from source
-cargo build --release -p gh-stats-cli
-```
-
-### gh CLI extension
-
-```bash
-gh extension install taylorivanoff/gh-stats/extensions/gh-stats
-gh stats status
-```
 
 ## Development
 
@@ -95,7 +69,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details.
 2. Launch GhStats and click Refresh to pull your real GitHub data
 3. Use range tabs and view tabs (**Analytics · Traffic · Health**)
 4. Star history backfills automatically; use **History** to force a refresh
-5. Export: `gh-stats-cli export --format site --output ./dashboard`
 
 ## Data collection
 
