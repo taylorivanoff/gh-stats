@@ -7,7 +7,7 @@ resolver = "2"
 # - tauri.conf.json omits version so the bundle uses this Cargo version
 # - package.json is a mirror for bun/npm (updated by scripts/bump-version.cjs)
 [workspace.package]
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
 authors = ["Taylor Ivanoff"]
 license = "MIT"
