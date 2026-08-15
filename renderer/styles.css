@@ -45,10 +45,12 @@ body.platform-darwin .app {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .titlebar-drag {
-  flex: 1;
+  flex: 0 1 auto;
   height: 100%;
   display: flex;
   align-items: center;
@@ -79,9 +81,9 @@ body.platform-darwin .titlebar-drag {
   color: var(--accent);
   -webkit-app-region: no-drag;
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  min-width: 56px;
-  max-width: min(200px, 28vw);
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 12rem;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -186,12 +188,22 @@ body.platform-darwin .titlebar-drag {
 .last-updated {
   font-size: 10px;
   color: var(--text-secondary);
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 0 4px;
+  text-align: right;
+}
+
+.timing-stats {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0 2px 0 4px;
 }
 
 .text-btn {

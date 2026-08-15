@@ -43,6 +43,7 @@
     btnInstallGh: document.getElementById('btn-install-gh'),
     btnAuthLogin: document.getElementById('btn-auth-login'),
     lastUpdated: document.getElementById('last-updated'),
+    timingStats: document.getElementById('timing-stats'),
     kpiGrid: document.getElementById('kpi-grid'),
     repoTbody: document.getElementById('repo-tbody'),
     repoCount: document.getElementById('repo-count'),
@@ -346,14 +347,15 @@
     if (!status.installed) {
       setAuthBadge('Install gh', 'error');
     } else if (status.authenticated || status.ok) {
-      let suffix = '';
       const user = status.user || 'authed';
-      if (authMs != null && timingStats?.authAvgMs != null) {
-        suffix = ` (${formatDuration(authMs)}, avg ${formatDuration(timingStats.authAvgMs)})`;
-      } else if (authMs != null) {
-        suffix = ` (${formatDuration(authMs)})`;
+      setAuthBadge(user, 'ok');
+      if (els.authBadge && authMs != null) {
+        const avg = timingStats?.authAvgMs;
+        els.authBadge.title = avg != null
+          ? `${user} · last ${formatDuration(authMs)}, avg ${formatDuration(avg)}`
+          : `${user} · last ${formatDuration(authMs)}`;
       }
-      setAuthBadge(`${user}${suffix}`, 'ok');
+      renderTimingStats();
     } else {
       setAuthBadge('Not authed', 'error');
       if (els.authBadge) els.authBadge.title = status.message || status.error || 'Run gh auth login';
@@ -397,6 +399,14 @@
     if (timingStats.fetchAvgMs != null) parts.push(`fetch avg ${formatDuration(timingStats.fetchAvgMs)}`);
     if (timingStats.historyAvgMs != null) parts.push(`history avg ${formatDuration(timingStats.historyAvgMs)}`);
     return parts.join(' · ');
+  }
+
+  function renderTimingStats() {
+    if (!els.timingStats) return;
+    const timing = timingSummary();
+    els.timingStats.textContent = timing;
+    els.timingStats.title = timing;
+    els.timingStats.classList.toggle('hidden', !timing);
   }
 
   function shortIso(iso) {
@@ -702,12 +712,12 @@
   }
 
   function renderMeta(data) {
-    const timing = timingSummary();
     const issues = data.health?.issueCount || 0;
     const healthBit = issues ? `${issues} attention` : 'health ok';
     const base = `${formatRelative(data.meta.lastSnapshotAt)} · ${data.meta.snapshotCount} snaps · ${healthBit}`;
-    els.lastUpdated.textContent = timing ? `${base} · ${timing}` : base;
-    els.lastUpdated.title = timing || base;
+    els.lastUpdated.textContent = base;
+    els.lastUpdated.title = base;
+    renderTimingStats();
   }
 
   function renderDashboard(data) {
@@ -756,7 +766,10 @@
 
   async function loadTimings() {
     if (!window.ghStats?.getTimings) return;
-    try { timingStats = await window.ghStats.getTimings(); } catch (_) {}
+    try {
+      timingStats = await window.ghStats.getTimings();
+      renderTimingStats();
+    } catch (_) {}
   }
 
   async function loadDashboard() {

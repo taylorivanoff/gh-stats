@@ -1421,7 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "gh-stats"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "chrono",
  "gh-stats-core",
@@ -1439,7 +1439,7 @@ dependencies = [
 
 [[package]]
 name = "gh-stats-cli"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "gh-stats-core",
  "serde_json",
@@ -1448,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "gh-stats-core"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
